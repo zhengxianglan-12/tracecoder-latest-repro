@@ -26,7 +26,7 @@ def get_file_hash(filepath):
 
 def main():
     # ==================================================
-    # 第 1 步：先检查 Git 状态（此时还没创建任何日志文件，工作区是绝对干净的）
+    # 第 1 步：先检查 Git 状态（此时工作区是绝对干净的）
     # ==================================================
     try:
         current_commit = subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip()
@@ -47,11 +47,35 @@ def main():
     }
 
     # ==================================================
-    # 第 2 步：再创建日志目录和文件
+    # 第 2 步：解析参数，并立即把元数据写进 JSON 文件
     # ==================================================
-    os.makedirs('results/run_logs', exist_ok=True)
-    log_filename = f"results/run_logs/terminal_output_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
+    parser = setup_arg_parser()
+    args = parser.parse_args()
 
+    run_time = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
+    EXPERIMENT_ID = f"{args.dataset}_{args.model.replace('/', '_')}_{run_time}"
+    OUTPUT_CSV_FILENAME = args.output_file or f"results/experiment_{EXPERIMENT_ID}.csv"
+
+    os.makedirs('results/run_logs', exist_ok=True)
+    meta_path = f'results/run_logs/run_meta_{EXPERIMENT_ID}.json'
+
+    # ---- 核心修改：在这里直接把 JSON 写了！----
+    run_meta = {
+        "run_timestamp": run_time,
+        "command_args": sys.argv,
+        "model": args.model,
+        "dataset": args.dataset,
+        "git_commit": current_commit,
+        "git_dirty": git_dirty,
+        "file_hashes": file_hashes
+    }
+    with open(meta_path, 'w', encoding='utf-8') as f:
+        json.dump(run_meta, f, indent=4, ensure_ascii=False)
+    
+    # ==================================================
+    # 第 3 步：创建日志文件（这时候 JSON 已经写好了）
+    # ==================================================
+    log_filename = f"results/run_logs/terminal_output_{run_time}.txt"
     logging.basicConfig(
         level=logging.INFO,
         format='%(message)s',
@@ -64,19 +88,11 @@ def main():
     global print
     print = logging.info
     print(f"[OK] 本次运行日志将自动保存至: {log_filename}")
+    print(f"[OK] 运行元数据已成功保存至: {meta_path}")
 
     # ==================================================
-    # 第 3 步：解析参数，准备实验
+    # 第 4 步：跑实验
     # ==================================================
-    parser = setup_arg_parser()
-    args = parser.parse_args()
-
-    run_time = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
-    EXPERIMENT_ID = f"{args.dataset}_{args.model.replace('/', '_')}_{run_time}"
-    OUTPUT_CSV_FILENAME = args.output_file or f"results/experiment_{EXPERIMENT_ID}.csv"
-
-    meta_path = f'results/run_logs/run_meta_{EXPERIMENT_ID}.json'
-
     if args.dataset not in DATASET_PATHS:
         print(f"Error: Path for dataset '{args.dataset}' is not defined in config.py.")
         sys.exit(1)
@@ -100,9 +116,6 @@ def main():
     print(f"--- Experiment Start: {EXPERIMENT_ID} ---")
     print(f"Arguments: {vars(args)}")
 
-    # ==================================================
-    # 第 4 步：跑实验
-    # ==================================================
     problem_keys = list(datasets.keys())
     start_index = args.start_index
     max_problems = len(problem_keys) if args.max_problems == -1 else args.max_problems
@@ -119,25 +132,9 @@ def main():
     except KeyboardInterrupt:
         print("\nManual interruption detected. Saving existing results...")
     finally:
-        # 保存 CSV
+        # 只保存 CSV 和打印摘要，JSON 不在这里写了
         save_results(results_data, OUTPUT_CSV_FILENAME)
         print_summary(results_data)
-
-        # ==================================================
-        # 第 5 步：最后保存元数据（用的是第1步检查的结果）
-        # ==================================================
-        run_meta = {
-            "run_timestamp": run_time,
-            "command_args": sys.argv,
-            "model": args.model,
-            "dataset": args.dataset,
-            "git_commit": current_commit,
-            "git_dirty": git_dirty,
-            "file_hashes": file_hashes
-        }
-        with open(meta_path, 'w', encoding='utf-8') as f:
-            json.dump(run_meta, f, indent=4, ensure_ascii=False)
-        print(f"[OK] 运行元数据（跑前状态）已保存至: {meta_path}")
 
 
 if __name__ == '__main__':
