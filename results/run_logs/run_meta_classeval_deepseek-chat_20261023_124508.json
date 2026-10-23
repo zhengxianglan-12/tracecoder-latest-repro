@@ -1,0 +1,26 @@
+{
+    "run_timestamp": "20261023_124508",
+    "command_args": [
+        "trace_learn_coder.py",
+        "-d",
+        "classeval",
+        "-m",
+        "deepseek-chat",
+        "--start-index",
+        "15",
+        "--max-problems",
+        "1",
+        "-o",
+        "results/retest_ClassEval_15_trace_v5.csv"
+    ],
+    "model": "deepseek-chat",
+    "dataset": "classeval",
+    "git_commit": "4d16787b98ef8a00349f28c6fcb7c9ea5f3da7d4",
+    "git_dirty": true,
+    "file_hashes": {
+        "problem_processor.py": "9bc72ef38be9",
+        "trace_learn_coder.py": "c8026e51203a",
+        "generation.py": "696211388e9f",
+        "traceRunner.py": "a4acf82a64d7"
+    }
+}
