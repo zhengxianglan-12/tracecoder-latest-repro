@@ -1,0 +1,89 @@
+[OK] 本次运行日志将自动保存至: results/run_logs/terminal_output_20261023_152706.txt
+[OK] 运行元数据已成功保存至: results/run_logs/run_meta_classeval_deepseek-chat_20261023_152706.json
+--- Experiment Start: classeval_deepseek-chat_20261023_152706 ---
+Arguments: {'model': 'deepseek-chat', 'dataset': 'classeval', 'no_instrumentation': False, 'no_two_step_repair': False, 'start_index': 15, 'max_problems': 1, 'max_debug_attempts': 5, 'max_no_improvement_streak': 2, 'timeout': 10, 'output_file': 'results/retest_ClassEval_15_final_v2.csv'}
+HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+--- Debug attempt: 1/5 | Best: 15/16 ---
+HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+Candidate repair result: All tests passed.
+🎯 [第 1 轮] 全部通过！状态：passed | 候选代码Hash: b7ed94a2
+===== 成功候选代码本体 =====
+class BoyerMooreSearch:
+    """
+    his is a class that implements the Boyer-Moore algorithm for string searching, which is used to find occurrences of a pattern within a given text.
+    """
+
+    def __init__(self, text, pattern):
+        """
+        Initializes the BoyerMooreSearch class with the given text and pattern.
+        :param text: The text to be searched, str.
+        :param pattern: The pattern to be searched for, str.
+        """
+        self.text, self.pattern = text, pattern
+        self.textLen, self.patLen = len(text), len(pattern)
+
+    def match_in_pattern(self, char):
+        """
+        Finds the rightmost occurrence of a character in the pattern.
+        :param char: The character to be searched for, str.
+        :return: The index of the rightmost occurrence of the character in the pattern, int.
+        >>> boyerMooreSearch = BoyerMooreSearch("ABAABA", "AB")
+        >>> boyerMooreSearch.match_in_pattern("A")
+        0
+
+        """
+        for i in range(self.patLen - 1, -1, -1):
+            if self.pattern[i] == char:
+                return i
+        return -1
+
+    def mismatch_in_text(self, currentPos):
+        """
+        Determines the position of the first dismatch between the pattern and the text.
+        :param currentPos: The current position in the text, int.
+        :return: The position of the first dismatch between the pattern and the text, int,otherwise -1.
+        >>> boyerMooreSearch = BoyerMooreSearch("ABAABA", "ABC")
+        >>> boyerMooreSearch.mismatch_in_text(0)
+        2
+
+        """
+        for i in range(self.patLen - 1, -1, -1):
+            if self.pattern[i] != self.text[currentPos + i]:
+                return currentPos + i
+        return -1
+
+    def bad_character_heuristic(self):
+        """
+        Finds all occurrences of the pattern in the text.
+        :return: A list of all positions of the pattern in the text, list.
+        >>> boyerMooreSearch = BoyerMooreSearch("ABAABA", "AB")
+        >>> boyerMooreSearch.bad_character_heuristic()
+        [0, 3]
+
+        """
+        positions = []
+        if self.patLen == 0:
+            return list(range(self.textLen + 1))
+        if self.patLen > self.textLen:
+            return positions
+        shift = 0
+        while shift <= self.textLen - self.patLen:
+            j = self.patLen - 1
+            while j >= 0 and self.pattern[j] == self.text[shift + j]:
+                j -= 1
+            if j < 0:
+                positions.append(shift)
+                if shift + self.patLen < self.textLen:
+                    next_char = self.text[shift + self.patLen]
+                    idx = self.match_in_pattern(next_char)
+                    shift += self.patLen - idx if idx != -1 else self.patLen
+                else:
+                    shift += 1
+            else:
+                bad_char = self.text[shift + j]
+                idx = self.match_in_pattern(bad_char)
+                shift += max(1, j - idx)
+        return positions
+========================
