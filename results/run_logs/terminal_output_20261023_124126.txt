@@ -1,0 +1,18 @@
+[OK] 本次运行日志将自动保存至: results/run_logs/terminal_output_20261023_124126.txt
+--- Experiment Start: classeval_deepseek-chat_20261023_124126 ---
+Arguments: {'model': 'deepseek-chat', 'dataset': 'classeval', 'no_instrumentation': False, 'no_two_step_repair': False, 'start_index': 15, 'max_problems': 1, 'max_debug_attempts': 5, 'max_no_improvement_streak': 2, 'timeout': 10, 'output_file': 'results/retest_ClassEval_15_trace_v5.csv'}
+HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+--- Debug attempt: 1/5 | Best: 0/16 ---
+HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+Candidate repair result: Failed (0/16 passed): None
+⏸️ [第 1 轮] 持平！状态：tie | 候选Hash: 52651c8c | 历史最优分: 0
+--- Debug attempt: 2/5 | Best: 0/16 ---
+HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+Candidate repair result: Failed (0/16 passed): None
+⏸️ [第 2 轮] 持平！状态：tie | 候选Hash: e6052ec2 | 历史最优分: 0
+2 consecutive attempts with no improvement, terminating debugging.
+[OK] 运行元数据（跑前状态）已保存至: results/run_logs/run_meta_classeval_deepseek-chat_20261023_124126.json
