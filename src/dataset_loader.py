@@ -50,8 +50,28 @@ def load_parquet_dataset(path):
         task_id = data['task_id']
         data.setdefault('entry_point', data.get('name', f'func_{task_id.split("/")[-1]}'))
         data.setdefault('test', data.get('tests', "assert True # Dummy test"))
-        # The 'prompt' field in BigCodeBench is usually the complete prompt
-        data.setdefault('complete_prompt', data.get('prompt', ''))
+        
+        # --- 核心修改：ClassEval 的 prompt 需要手动拼接 ---
+        if 'class_name' in data:
+            class_name = data.get('class_name', '')
+            class_desc = data.get('class_description', '')
+            skeleton = data.get('skeleton', '')
+            constructor = data.get('class_constructor', '')
+            data['complete_prompt'] = f"""Please implement the class {class_name}.
+
+Description:
+{class_desc}
+
+Skeleton:
+{skeleton}
+
+Constructor:
+{constructor}
+
+Complete the class by implementing all methods. Output only the Python code."""
+        else:
+            data.setdefault('complete_prompt', data.get('prompt', ''))
+        
         datasets_dict[task_id] = data
     print(f"Loaded {len(datasets_dict)} problems from {path}")
     return datasets_dict

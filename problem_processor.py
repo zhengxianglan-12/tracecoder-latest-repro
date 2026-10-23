@@ -300,6 +300,7 @@ def _run_direct_generation(problem_data, args, check_correctness_func_param: Cal
             "completion_tokens": c_tokens}
 
 
+
 def _run_self_debugging(initial_code, initial_eval, problem_data, args, check_correctness_func_param: Callable):
     """Executes the second phase: self-debugging loop (updated to include complete logic)."""
     code_to_debug, last_eval, best_code, best_eval = initial_code, initial_eval, initial_code, initial_eval
@@ -387,6 +388,9 @@ def _run_self_debugging(initial_code, initial_eval, problem_data, args, check_co
             best_code, best_eval = candidate_code, eval_candidate
             code_to_debug = candidate_code
             logging.info(f"🎯 [第 {attempt} 轮] 全部通过！状态：passed | 候选代码Hash: {get_hash(candidate_code)}")
+            
+            # 成功时，把通过的代码也打印出来
+            logging.info(f"===== 成功候选代码本体 =====\n{candidate_code}\n========================")
 
             attempt_log = {
                 "attempt": attempt, "plan": repair_plan, "eval_result": eval_candidate,
@@ -405,10 +409,12 @@ def _run_self_debugging(initial_code, initial_eval, problem_data, args, check_co
             status = "improve"
             best_code, best_eval, code_to_debug, last_eval, streak = candidate_code, eval_candidate, candidate_code, eval_candidate, 0
             logging.info(f"📈 [第 {attempt} 轮] 改进！状态：improve | 候选Hash: {get_hash(candidate_code)} | 历史最优分: {curr_score}")
+            logging.info(f"===== 候选代码本体 =====\n{candidate_code}\n========================")
         elif curr_score == best_score:
             status = "tie"
             streak += 1
             logging.info(f"⏸️ [第 {attempt} 轮] 持平！状态：tie | 候选Hash: {get_hash(candidate_code)} | 历史最优分: {best_score}")
+            logging.info(f"===== 候选代码本体 =====\n{candidate_code}\n========================")
         else:
             status = "regress"
             streak += 1
