@@ -11,11 +11,16 @@ def load_dataset(dataset_name: str, dataset_path: str):
         raise FileNotFoundError(f"Dataset file not found: {dataset_path}")
 
     if dataset_name == 'bigcodebench':
-        return load_parquet_dataset(dataset_path)
+        return load_jsonl_dataset(dataset_path)
     elif dataset_name == 'humaneval':
         # HumanEval is typically a jsonl file
         return load_jsonl_dataset(dataset_path)
     # More dataset loading logic can be added here
+    elif dataset_name == 'humanevalplus':
+        # HumanEvalPlus is also a jsonl file (same format as HumanEval)
+        return load_jsonl_dataset(dataset_path)
+    elif dataset_name == 'classeval':
+        return load_parquet_dataset(dataset_path)  # 这里补上了 ClassEval 分支
     else:
         raise ValueError(f"Unsupported dataset name: {dataset_name}")
 

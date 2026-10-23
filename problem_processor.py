@@ -301,10 +301,12 @@ def _run_direct_generation(problem_data, args, check_correctness_func_param: Cal
 
 
 def _run_self_debugging(initial_code, initial_eval, problem_data, args, check_correctness_func_param: Callable):
+    """Executes the second phase: self-debugging loop (updated to include complete logic)."""
     code_to_debug, last_eval, best_code, best_eval = initial_code, initial_eval, initial_code, initial_eval
     log, history, p_tokens, c_tokens, streak = [], [], 0, 0, 0
     instrumentation_suggestions = ""
 
+    import hashlib
     def get_hash(code_str):
         return hashlib.md5(code_str.encode('utf-8')).hexdigest()[:8] if code_str else "empty"
 
@@ -333,7 +335,7 @@ def _run_self_debugging(initial_code, initial_eval, problem_data, args, check_co
         repair_plan, instrumentation_suggestions = _parse_llm_output(llm_response)
         candidate_code = ""
 
-        # 分支 A：无计划退出
+        # ----- 分支 A：无计划退出 -----
         if not (repair_plan and repair_plan.strip()):
             attempt_log = {
                 "attempt": attempt, "plan": repair_plan,
@@ -355,7 +357,7 @@ def _run_self_debugging(initial_code, initial_eval, problem_data, args, check_co
         p_tokens, c_tokens = p_tokens + p_impl, c_tokens + c_impl
         candidate_code = _parse_implementation_output(llm_response_impl)
 
-        # 分支 B：空代码退出
+        # ----- 分支 B：空代码退出 -----
         if not candidate_code.strip():
             attempt_log = {
                 "attempt": attempt, "plan": repair_plan,
@@ -379,12 +381,13 @@ def _run_self_debugging(initial_code, initial_eval, problem_data, args, check_co
         best_score = best_eval.get('passed_count', 0)
         status = "unknown"
 
-        # 分支 C：成功
+        # ----- 分支 C：成功（先记日志再 break） -----
         if eval_candidate.get('passed'):
             status = "passed"
             best_code, best_eval = candidate_code, eval_candidate
             code_to_debug = candidate_code
-            logging.info(f"[PASS] attempt {attempt}: all tests passed | candidate hash: {get_hash(candidate_code)}")
+            logging.info(f"🎯 [第 {attempt} 轮] 全部通过！状态：passed | 候选代码Hash: {get_hash(candidate_code)}")
+
             attempt_log = {
                 "attempt": attempt, "plan": repair_plan, "eval_result": eval_candidate,
                 "status": status, "candidate_code_hash": get_hash(candidate_code),
@@ -397,23 +400,27 @@ def _run_self_debugging(initial_code, initial_eval, problem_data, args, check_co
             log.append(attempt_log); history.append(attempt_log)
             break
 
-        # 分支 D：改善 / 持平 / 退步
+        # ----- 分支 D：改善 / 持平 / 退步 -----
         if curr_score > best_score:
             status = "improve"
             best_code, best_eval, code_to_debug, last_eval, streak = candidate_code, eval_candidate, candidate_code, eval_candidate, 0
-            logging.info(f"[IMPROVE] attempt {attempt}: score {curr_score} | candidate hash: {get_hash(candidate_code)}")
+            logging.info(f"📈 [第 {attempt} 轮] 改进！状态：improve | 候选Hash: {get_hash(candidate_code)} | 历史最优分: {curr_score}")
         elif curr_score == best_score:
             status = "tie"
             streak += 1
-            logging.info(f"[TIE] attempt {attempt}: score {best_score} | candidate hash: {get_hash(candidate_code)}")
+            logging.info(f"⏸️ [第 {attempt} 轮] 持平！状态：tie | 候选Hash: {get_hash(candidate_code)} | 历史最优分: {best_score}")
         else:
             status = "regress"
             streak += 1
-            logging.info(f"[REGRESS] attempt {attempt}: candidate hash {get_hash(candidate_code)}, best hash {get_hash(best_code)}")
-            logging.info(f"[ROLLBACK] next input -> best code (hash: {get_hash(best_code)})")
+            logging.info(f"📉 [第 {attempt} 轮] 退步！状态：regress | 候选Hash: {get_hash(candidate_code)} | 历史最优Hash: {get_hash(best_code)}")
+            logging.info(f"===== 候选代码本体 =====\n{candidate_code}\n========================")
+            logging.info(f"===== 历史最优代码本体 =====\n{best_code}\n========================")
+            logging.info(f"⚠️ 触发回滚！下一轮输入强制替换为历史最优代码 | 历史最优Hash: {get_hash(best_code)}")
+            logging.info(f"===== 下一轮实际输入代码本体 =====\n{code_to_debug}\n========================")
             code_to_debug = best_code
             last_eval = best_eval
 
+        # 判断是否真的会有下一轮
         will_continue = (attempt < args.max_debug_attempts) and (streak < args.max_no_improvement_streak)
 
         attempt_log = {
