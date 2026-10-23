@@ -1,0 +1,10 @@
+[OK] 本次运行日志将自动保存至: results/run_logs/terminal_output_20261023_123722.txt
+[OK] 运行元数据已成功保存至: results/run_logs/run_meta_classeval_deepseek-chat_20261023_123722.json
+--- Experiment Start: classeval_deepseek-chat_20261023_123722 ---
+Arguments: {'model': 'deepseek-chat', 'dataset': 'classeval', 'no_instrumentation': False, 'no_two_step_repair': False, 'start_index': 15, 'max_problems': 1, 'max_debug_attempts': 5, 'max_no_improvement_streak': 2, 'timeout': 10, 'output_file': 'results/retest_ClassEval_15_trace_v4.csv'}
+HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+--- Debug attempt: 1/5 | Best: 0/16 ---
+HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 200 OK"
+LLM did not provide valid code, terminating debugging.

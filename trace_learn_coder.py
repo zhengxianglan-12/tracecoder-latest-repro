@@ -12,7 +12,6 @@ from tqdm import tqdm
 # Import our split-out modules
 from config import setup_arg_parser, DATASET_PATHS
 from reporting import save_results, print_summary
-# Import process_problem and _load_check_correctness_func from problem_processor
 from problem_processor import process_problem, _load_check_correctness_func
 from src.dataset_loader import load_dataset
 
@@ -26,11 +25,10 @@ def get_file_hash(filepath):
 
 
 def main():
-    # 新增：配置全局日志，自动保存到 results/run_logs/ 目录
+    # 配置全局日志，自动保存到 results/run_logs/ 目录
     os.makedirs('results/run_logs', exist_ok=True)
     log_filename = f"results/run_logs/terminal_output_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
 
-    # 配置 logging，同时输出到终端和文件
     logging.basicConfig(
         level=logging.INFO,
         format='%(message)s',
@@ -40,22 +38,19 @@ def main():
         ]
     )
 
-    # 把 print 替换成 logging.info
     global print
     print = logging.info
-
     print(f"[OK] 本次运行日志将自动保存至: {log_filename}")
 
     # 1. Setup and parse arguments
     parser = setup_arg_parser()
     args = parser.parse_args()
 
-    # 2. Generate experiment ID and output filename
+    # 2. 记录跑实验前的代码状态（此时还没生成新文件）
     run_time = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
     EXPERIMENT_ID = f"{args.dataset}_{args.model.replace('/', '_')}_{run_time}"
     OUTPUT_CSV_FILENAME = args.output_file or f"results/experiment_{EXPERIMENT_ID}.csv"
 
-    # --- 新增：获取 Git 提交号和是否有未提交修改 ---
     try:
         current_commit = subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip()
     except Exception:
@@ -63,11 +58,10 @@ def main():
 
     try:
         git_status = subprocess.check_output(["git", "status", "--porcelain"], text=True).strip()
-        git_dirty = len(git_status) > 0  # 如果有输出，说明有未提交的修改
+        git_dirty = len(git_status) > 0
     except Exception:
         git_dirty = True
 
-    # --- 新增：计算关键文件的 MD5 哈希 ---
     file_hashes = {
         "problem_processor.py": get_file_hash("problem_processor.py"),
         "trace_learn_coder.py": get_file_hash("trace_learn_coder.py"),
@@ -75,20 +69,8 @@ def main():
         "traceRunner.py": get_file_hash("src/traceRunner.py")
     }
 
-    # 新增：自动保存运行元数据（溯源信息）
-    run_meta = {
-        "run_timestamp": run_time,
-        "command_args": sys.argv,
-        "model": args.model,
-        "dataset": args.dataset,
-        "git_commit": current_commit,
-        "git_dirty": git_dirty,
-        "file_hashes": file_hashes
-    }
+    # 元数据的路径先定好，但先不写入文件（等跑完实验再写）
     meta_path = f'results/run_logs/run_meta_{EXPERIMENT_ID}.json'
-    with open(meta_path, 'w', encoding='utf-8') as f:
-        json.dump(run_meta, f, indent=4, ensure_ascii=False)
-    print(f"[OK] 运行元数据已成功保存至: {meta_path}")
 
     # 3. Load the dataset
     if args.dataset not in DATASET_PATHS:
@@ -135,6 +117,20 @@ def main():
         # 6. Save results and print summary
         save_results(results_data, OUTPUT_CSV_FILENAME)
         print_summary(results_data)
+
+        # 7. 跑完实验后，再把之前收集好的元数据写入 JSON
+        run_meta = {
+            "run_timestamp": run_time,
+            "command_args": sys.argv,
+            "model": args.model,
+            "dataset": args.dataset,
+            "git_commit": current_commit,
+            "git_dirty": git_dirty,   # 这是跑实验前的状态，不受后续新文件影响
+            "file_hashes": file_hashes
+        }
+        with open(meta_path, 'w', encoding='utf-8') as f:
+            json.dump(run_meta, f, indent=4, ensure_ascii=False)
+        print(f"[OK] 运行元数据（跑前状态）已保存至: {meta_path}")
 
 
 if __name__ == '__main__':
