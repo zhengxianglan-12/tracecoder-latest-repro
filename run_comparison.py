@@ -168,11 +168,22 @@ def run_resample(problem_data, args, check_correctness_func, log_lines,
 # ============================================================
 # 写输出
 # ============================================================
+# ============================================================
+# 写输出（5 文件方案）
+#   <dataset>_<task>_<ts>_run_meta.json
+#   <dataset>_<task>_<ts>_trace.json
+#   <dataset>_<task>_<ts>_terminal_output.txt
+#   <dataset>_<task>_<ts>_requests.csv
+#   <dataset>_<task>_<ts>_summary.csv
+# ============================================================
 def write_outputs(task_id, safe_task, run_time, cli,
                   trace_res, resample_res,
                   args_trace, args_resample,
                   log_lines, results_dir="results"):
-    common_meta = {
+    prefix = f"{cli.dataset}_{safe_task}_{run_time}"
+
+    # ---------- 1. run_meta（公共字段 + methods 子字典） ----------
+    run_meta = {
         "run_timestamp": run_time,
         "dataset": cli.dataset,
         "task_id": task_id,
@@ -182,7 +193,6 @@ def write_outputs(task_id, safe_task, run_time, cli,
         "code_dirty": _git_dirty(),
         "budget_total": cli.budget_total,
         "output_reserve": cli.output_reserve,
-        "stop_when_visible_passed": cli.stop_when_visible_passed,
         "selection_rule": SELECTION_RULE,
         "evaluation_scope": EVALUATION_SCOPE,
         "file_hashes": {
@@ -203,35 +213,49 @@ def write_outputs(task_id, safe_task, run_time, cli,
             "analysis_planning": 4096,
             "implementation": 3000,
         },
-                "step_input_estimate_ratio": {
+        "step_input_estimate_ratio": {
             "direct_generation": 0.35,
             "instrumentation": 0.35,
             "analysis_planning": 0.40,
             "implementation": 0.35,
         },
+        "methods": {
+            "tracecoder": {
+                "no_instrumentation": cli.no_instrumentation,
+                "max_debug_attempts": cli.max_debug_attempts,
+                "max_no_improvement_streak": cli.max_no_improvement_streak,
+                "remaining_budget_after": args_trace.remaining_budget,
+            },
+            "independent_resample": {
+                "max_resamples": cli.max_resamples,
+                "stop_when_visible_passed": cli.stop_when_visible_passed,
+                "remaining_budget_after": args_resample.remaining_budget,
+            },
+        },
     }
+    _write_json(f"{results_dir}/run_logs/{prefix}_run_meta.json", run_meta)
 
-    meta_trace = dict(common_meta)
-    meta_trace.update({
-        "method": "tracecoder",
-        "no_instrumentation": cli.no_instrumentation,
-        "max_debug_attempts": cli.max_debug_attempts,
-        "max_no_improvement_streak": cli.max_no_improvement_streak,
-        "remaining_budget_after": args_trace.remaining_budget,
-    })
-    meta_resample = dict(common_meta)
-    meta_resample.update({
-        "method": "independent_resample",
-        "max_resamples": cli.max_resamples,
-        "remaining_budget_after": args_resample.remaining_budget,
-    })
+    # ---------- 2. trace（TraceCoder 逐轮 + Resample 逐候选） ----------
+    trace = {
+        "dataset": cli.dataset,
+        "task_id": task_id,
+        "run_timestamp": run_time,
+        "tracecoder": {
+            "debug_session_log": trace_res.get("debug_session_log", []),
+        },
+        "independent_resample": {
+            "candidates": resample_res.get("candidates", []),
+            "selection_rule": resample_res.get("selection_rule"),
+            "evaluation_scope": resample_res.get("evaluation_scope"),
+        },
+    }
+    _write_json(f"{results_dir}/run_logs/{prefix}_trace.json", trace)
 
-    _write_json(f"{results_dir}/run_logs/run_meta_{safe_task}_{cli.model}_{run_time}_tracecoder.json", meta_trace)
-    _write_json(f"{results_dir}/run_logs/run_meta_{safe_task}_{cli.model}_{run_time}_resample.json", meta_resample)
+    # ---------- 3. terminal_output（两组合并日志） ----------
+    _write_text(f"{results_dir}/run_logs/{prefix}_terminal_output.txt",
+                "\n".join(log_lines))
 
-    _write_text(f"{results_dir}/run_logs/terminal_output_{safe_task}_{run_time}_tracecoder.txt", "\n".join(log_lines))
-    _write_text(f"{results_dir}/run_logs/terminal_output_{safe_task}_{run_time}_combined.txt", "\n".join(log_lines))
-
+    # ---------- 4. requests（两组合并，method 区分） ----------
     trace_requests = []
     for r in trace_res.get("request_log", []) or []:
         trace_requests.append({
@@ -256,16 +280,17 @@ def write_outputs(task_id, safe_task, run_time, cli,
             "visible_passed_count": None,
             "status": "resample",
         })
-
+    all_requests = trace_requests + resample_requests
     req_headers = ["method", "request_id", "stage", "prompt_tokens", "completion_tokens",
                    "remaining_after", "visible_passed_count", "status"]
-    _write_csv(f"{results_dir}/tables/tracecoder_requests_{safe_task}_{run_time}.csv", trace_requests, req_headers)
-    _write_csv(f"{results_dir}/tables/resample_requests_{safe_task}_{run_time}.csv", resample_requests, req_headers)
+    _write_csv(f"{results_dir}/tables/{prefix}_requests.csv",
+               all_requests, req_headers)
 
+    # ---------- 5. summary（两组横向对比） ----------
     summary_rows = [
         {
             "task_id": task_id, "method": "tracecoder",
-            "num_requests": len(trace_res.get("debug_session_log", []) or []),
+            "num_requests": len(trace_res.get("request_log", []) or []),
             "prompt_tokens": trace_res.get("total_prompt_tokens"),
             "completion_tokens": trace_res.get("total_completion_tokens"),
             "stopped_reason": trace_res.get("stopped_reason"),
@@ -291,8 +316,9 @@ def write_outputs(task_id, safe_task, run_time, cli,
     summary_headers = ["task_id", "method", "num_requests", "prompt_tokens", "completion_tokens",
                        "stopped_reason", "final_visible_passed_count", "final_code_hash",
                        "budget_remaining_after", "evaluation_scope", "selection_rule"]
-    _write_csv(f"{results_dir}/tables/comparison_{safe_task}_summary_{run_time}.csv", summary_rows, summary_headers)
-    _write_csv(f"{results_dir}/tables/comparison_{safe_task}_summary.csv", summary_rows, summary_headers)
+    _write_csv(f"{results_dir}/tables/{prefix}_summary.csv",
+               summary_rows, summary_headers)
+
     return summary_rows
 
 
