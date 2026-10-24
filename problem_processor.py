@@ -288,27 +288,64 @@ def _load_check_correctness_func(dataset_name: str) -> Callable:
     except ImportError as e:
         raise ImportError(f"Could not import evaluation module '{module_path}': {e}. Ensure __init__.py files exist in package directories.")
 
+# 按步骤的默认输出预留（token）
+DEFAULT_OUTPUT_RESERVE = {
+    "direct_generation": 2000,
+    "instrumentation": 2000,
+    "analysis_planning": 4096,
+    "implementation": 3000,
+}
+
+
+def get_step_output_reserve(args, step):
+    """
+    取某一步的输出预留：
+    1) 若 args 显式给了 step_output_reserve 字典且含该步，用它；
+    2) 否则用 DEFAULT_OUTPUT_RESERVE[step]；
+    3) 若都没有，退回 args.output_reserve（兼容旧调用）。
+    """
+    step_map = getattr(args, "step_output_reserve", None)
+    if isinstance(step_map, dict) and step in step_map:
+        return step_map[step]
+    if step in DEFAULT_OUTPUT_RESERVE:
+        return DEFAULT_OUTPUT_RESERVE[step]
+    return getattr(args, "output_reserve", 2000)
 # --- 预算控制辅助 ---
-def estimate_input_tokens(text: str) -> int:
-    """保守估算输入 token：按字符数 * 0.5，宁多勿少。"""
-    return int(len(text) * 0.5)
+# 按步骤的输入估算系数（经验值；代码/中文混合约 0.3~0.4，取 0.35 折中）
+INPUT_ESTIMATE_RATIO = {
+    "direct_generation": 0.35,
+    "instrumentation": 0.35,
+    "analysis_planning": 0.40,
+    "implementation": 0.35,
+}
+DEFAULT_INPUT_RATIO = 0.35
 
 
-def budget_check_and_reserve(remaining_budget, prompt, output_reserve):
+def estimate_input_tokens(text: str, step: str = None) -> int:
+    """
+    估算输入 token：按字符数 * 步骤系数。
+    系数偏低是有意的——宁可低估、让请求发出去，用实际 usage 扣账；
+    也不高估、把明明够的请求卡掉。
+    """
+    ratio = INPUT_ESTIMATE_RATIO.get(step, DEFAULT_INPUT_RATIO)
+    return int(len(text) * ratio)
+
+
+def budget_check_and_reserve(remaining_budget, prompt, output_reserve, step=None):
     """
     返回 (need, ok)：need = 估算输入 + 输出预留；ok = 剩余预算是否够。
     """
-    need = estimate_input_tokens(prompt) + output_reserve
+    need = estimate_input_tokens(prompt, step) + output_reserve
     return need, (remaining_budget >= need)
 # --- Core Processing Functions ---
 def _run_direct_generation(problem_data, args, check_correctness_func_param: Callable):
     prompt = problem_data.get('complete_prompt', '')
-    output_reserve = getattr(args, "output_reserve", 2000)
+    output_reserve = get_step_output_reserve(args, "direct_generation")
     remaining = getattr(args, "remaining_budget", None)
 
     # 预算检查：不够就不发
     if remaining is not None:
-        need, ok = budget_check_and_reserve(remaining, prompt, output_reserve)
+        need, ok = budget_check_and_reserve(remaining, prompt, output_reserve, step="direct_generation")
         if not ok:
             return {"code": "", "eval_result": {"passed": False, "passed_count": 0, "total_count": 0},
                     "prompt_tokens": 0, "completion_tokens": 0,
@@ -336,7 +373,9 @@ def _run_self_debugging(initial_code, initial_eval, problem_data, args, check_co
     """Executes the second phase: self-debugging loop (updated to include complete logic)."""
     code_to_debug, last_eval, best_code, best_eval = initial_code, initial_eval, initial_code, initial_eval
     log, history, p_tokens, c_tokens, streak = [], [], 0, 0, 0
+    request_log = []
     instrumentation_suggestions = ""
+
 
     import hashlib
     def get_hash(code_str):
@@ -357,13 +396,20 @@ def _run_self_debugging(initial_code, initial_eval, problem_data, args, check_co
         if not args.no_instrumentation:
             failure_info = format_check_correctness_result(last_eval)
             instr_prompt = _build_instrumentation_prompt(code_to_debug, instrumentation_suggestions, failure_info)
-            output_reserve = getattr(args, "output_reserve", 2000)
+            output_reserve = get_step_output_reserve(args, "instrumentation")
             remaining = getattr(args, "remaining_budget", None)
             if remaining is not None:
-                need, ok = budget_check_and_reserve(remaining, instr_prompt, output_reserve)
+                need, ok = budget_check_and_reserve(remaining, instr_prompt, output_reserve, step="instrumentation")
                 if not ok:
                     logging.info(f"[budget] instrumentation skipped: need ~{need}, remaining {remaining}")
                     budget_exhausted = True
+                    request_log.append({
+                        "stage": "skipped_budget_instrumentation",
+                        "attempt": attempt,
+                        "prompt_tokens": 0,
+                        "completion_tokens": 0,
+                        "remaining_after": remaining,
+                    })
                     log.append({
                         "attempt": attempt,
                         "status": "budget_exhausted",
@@ -405,6 +451,13 @@ def _run_self_debugging(initial_code, initial_eval, problem_data, args, check_co
                 break
             args.remaining_budget = remaining - (p + c)
             p_tokens, c_tokens = p_tokens + p, c_tokens + c
+            request_log.append({
+                "stage": "instrumentation",
+                "attempt": attempt,
+                "prompt_tokens": p,
+                "completion_tokens": c,
+                "remaining_after": args.remaining_budget,
+            })
             if instrumented_code_gen.strip():
                 instrumented_code = instrumented_code_gen
                 exec_result = execute_code_and_capture_prints_last(
@@ -413,10 +466,10 @@ def _run_self_debugging(initial_code, initial_eval, problem_data, args, check_co
 
         # 2. Analysis and Planning
         analysis_prompt = _build_analysis_planning_prompt(problem_data, instrumented_code, captured_prints, history)
-        output_reserve = getattr(args, "output_reserve", 2000)
+        output_reserve = get_step_output_reserve(args, "analysis_planning")
         remaining = getattr(args, "remaining_budget", None)
         if remaining is not None:
-            need, ok = budget_check_and_reserve(remaining, analysis_prompt, output_reserve)
+            need, ok = budget_check_and_reserve(remaining, analysis_prompt, output_reserve, step="analysis_planning")
             if not ok:
                 logging.info(f"[budget] analysis skipped: need ~{need}, remaining {remaining}")
                 budget_exhausted = True
@@ -461,6 +514,13 @@ def _run_self_debugging(initial_code, initial_eval, problem_data, args, check_co
             break
         args.remaining_budget = remaining - (p + c)
         p_tokens, c_tokens = p_tokens + p, c_tokens + c
+        request_log.append({
+            "stage": "analysis_planning",
+            "attempt": attempt,
+            "prompt_tokens": p,
+            "completion_tokens": c,
+            "remaining_after": args.remaining_budget,
+        })
 
         repair_plan, instrumentation_suggestions = _parse_llm_output(llm_response)
         candidate_code = ""
@@ -487,10 +547,10 @@ def _run_self_debugging(initial_code, initial_eval, problem_data, args, check_co
 
         # 3. Code Implementation
         impl_prompt = _build_code_implementation_prompt(problem_data, code_to_debug, captured_prints, repair_plan)
-        output_reserve = getattr(args, "output_reserve", 2000)
+        output_reserve = get_step_output_reserve(args, "implementation")
         remaining = getattr(args, "remaining_budget", None)
         if remaining is not None:
-            need, ok = budget_check_and_reserve(remaining, impl_prompt, output_reserve)
+            need, ok = budget_check_and_reserve(remaining, impl_prompt, output_reserve, step="implementation")
             if not ok:
                 logging.info(f"[budget] implementation skipped: need ~{need}, remaining {remaining}")
                 budget_exhausted = True
@@ -535,6 +595,13 @@ def _run_self_debugging(initial_code, initial_eval, problem_data, args, check_co
             break
         args.remaining_budget = remaining - (p_impl + c_impl)
         p_tokens, c_tokens = p_tokens + p_impl, c_tokens + c_impl
+        request_log.append({
+            "stage": "implementation",
+            "attempt": attempt,
+            "prompt_tokens": p_impl,
+            "completion_tokens": c_impl,
+            "remaining_after": args.remaining_budget,
+        })
         candidate_code = _parse_implementation_output(llm_response_impl)
 
         # ----- 分支 B：空代码退出 -----
@@ -638,6 +705,7 @@ def _run_self_debugging(initial_code, initial_eval, problem_data, args, check_co
 
     return {
         "final_code": best_code, "final_eval": best_eval, "session_log": log,
+        "request_log": request_log,
         "prompt_tokens": p_tokens, "completion_tokens": c_tokens,
         "budget_exhausted": budget_exhausted,
         "budget_remaining": getattr(args, "remaining_budget", None),
@@ -654,6 +722,16 @@ def process_problem(problem_data, task_id, args, check_correctness_func_param: C
     start_time = time.time()
 
     gen_res = _run_direct_generation(problem_data, args, check_correctness_func_param)
+    initial_request_log = []
+    if gen_res.get("prompt_tokens") is not None:
+        initial_request_log.append({
+            "stage": "direct_generation",
+            "attempt": 0,
+            "prompt_tokens": gen_res["prompt_tokens"],
+            "completion_tokens": gen_res["completion_tokens"],
+            "remaining_after": getattr(args, "remaining_budget", None),
+        })
+
 
     # 分支：初始生成因预算不足被跳过
     if gen_res.get("budget_stopped"):
@@ -707,6 +785,7 @@ def process_problem(problem_data, task_id, args, check_correctness_func_param: C
             "final_code": gen_res["code"], "final_eval": gen_res["eval_result"],
             "final_passed": True,
             "stopped_reason": "Passed on direct generation",
+            "request_log": initial_request_log,
         })
     else:
         print("Direct generation failed, entering self-debugging phase.")
@@ -724,6 +803,7 @@ def process_problem(problem_data, task_id, args, check_correctness_func_param: C
             "budget_exhausted": debug_res.get("budget_exhausted", False),
             "budget_remaining": debug_res.get("budget_remaining"),
             "usage_unverifiable": debug_res.get("usage_unverifiable", False),
+            "request_log": initial_request_log + debug_res.get("request_log", []),
         })
         if debug_res["prompt_tokens"] is not None:
             total_p += debug_res["prompt_tokens"]

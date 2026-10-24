@@ -96,7 +96,7 @@ def install_fake_generator(fake_gen):
 def test_budget_insufficient():
     print("\n========== 小例 1：剩余预算不足 ==========")
     prompt = make_problem_data()["complete_prompt"]
-    est_input = estimate_input_tokens(prompt)
+    est_input = estimate_input_tokens(prompt, step="direct_generation")
     output_reserve = 2000
     need = est_input + output_reserve
     print(f"估算输入={est_input}, 输出预留={output_reserve}, 需要={need}")
@@ -123,7 +123,7 @@ def test_budget_insufficient():
 def test_budget_exactly_enough():
     print("\n========== 小例 2：恰好够一次请求 ==========")
     prompt = make_problem_data()["complete_prompt"]
-    est_input = estimate_input_tokens(prompt)
+    est_input = estimate_input_tokens(prompt, step="direct_generation")
     output_reserve = 2000
     need = est_input + output_reserve
     print(f"估算输入={est_input}, 输出预留={output_reserve}, 需要={need}")
@@ -201,7 +201,7 @@ def test_missing_usage():
 def test_shared_budget_ledger():
     print("\n========== 附加小例：初始生成与调试共用同一预算账本 ==========")
     prompt = make_problem_data()["complete_prompt"]
-    est_input = estimate_input_tokens(prompt)
+    est_input = estimate_input_tokens(prompt, step="direct_generation")
     output_reserve = 2000
     need = est_input + output_reserve
     budget = need * 3  # 够 3 次请求

@@ -197,6 +197,18 @@ def write_outputs(task_id, safe_task, run_time, cli,
             "generation.py": _file_hash_lf("src/generation.py"),
             "traceRunner.py": _file_hash_lf("src/traceRunner.py"),
         },
+        "step_output_reserve": {
+            "direct_generation": 2000,
+            "instrumentation": 2000,
+            "analysis_planning": 4096,
+            "implementation": 3000,
+        },
+                "step_input_estimate_ratio": {
+            "direct_generation": 0.35,
+            "instrumentation": 0.35,
+            "analysis_planning": 0.40,
+            "implementation": 0.35,
+        },
     }
 
     meta_trace = dict(common_meta)
@@ -221,30 +233,31 @@ def write_outputs(task_id, safe_task, run_time, cli,
     _write_text(f"{results_dir}/run_logs/terminal_output_{safe_task}_{run_time}_combined.txt", "\n".join(log_lines))
 
     trace_requests = []
-    for attempt in trace_res.get("debug_session_log", []) or []:
-        cost = attempt.get("cost", {})
+    for r in trace_res.get("request_log", []) or []:
         trace_requests.append({
             "method": "tracecoder",
-            "request_id": attempt.get("attempt"),
-            "prompt_tokens": cost.get("prompt_tokens"),
-            "completion_tokens": cost.get("completion_tokens"),
-            "remaining_after": None,
-            "visible_passed_count": attempt.get("eval_result", {}).get("passed_count"),
-            "status": attempt.get("status"),
+            "request_id": r.get("attempt"),
+            "stage": r.get("stage"),
+            "prompt_tokens": r.get("prompt_tokens"),
+            "completion_tokens": r.get("completion_tokens"),
+            "remaining_after": r.get("remaining_after"),
+            "visible_passed_count": None,
+            "status": r.get("stage"),
         })
     resample_requests = []
     for r in resample_res.get("requests", []) or []:
         resample_requests.append({
             "method": "independent_resample",
             "request_id": r.get("request_id"),
+            "stage": "resample",
             "prompt_tokens": r.get("prompt_tokens"),
             "completion_tokens": r.get("completion_tokens"),
             "remaining_after": r.get("remaining_after"),
             "visible_passed_count": None,
-            "status": "",
+            "status": "resample",
         })
 
-    req_headers = ["method", "request_id", "prompt_tokens", "completion_tokens",
+    req_headers = ["method", "request_id", "stage", "prompt_tokens", "completion_tokens",
                    "remaining_after", "visible_passed_count", "status"]
     _write_csv(f"{results_dir}/tables/tracecoder_requests_{safe_task}_{run_time}.csv", trace_requests, req_headers)
     _write_csv(f"{results_dir}/tables/resample_requests_{safe_task}_{run_time}.csv", resample_requests, req_headers)
