@@ -40,4 +40,8 @@ def setup_arg_parser():
     parser.add_argument('--max-no-improvement-streak', type=int, default=2, help='The threshold for stopping debugging after consecutive attempts with no improvement')
     parser.add_argument('--timeout', type=int, default=10, help='The timeout for code execution in seconds')
     parser.add_argument('-o', '--output-file', type=str, default=None, help='Specify the path and name for the output CSV file')
+    parser.add_argument('--budget-total', type=int, default=None,
+                        help='Total token budget per problem; None means no budget control')
+    parser.add_argument('--output-reserve', type=int, default=2000,
+                        help='Reserved output tokens per request for budget accounting')
     return parser

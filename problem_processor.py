@@ -288,17 +288,48 @@ def _load_check_correctness_func(dataset_name: str) -> Callable:
     except ImportError as e:
         raise ImportError(f"Could not import evaluation module '{module_path}': {e}. Ensure __init__.py files exist in package directories.")
 
+# --- 预算控制辅助 ---
+def estimate_input_tokens(text: str) -> int:
+    """保守估算输入 token：按字符数 * 0.5，宁多勿少。"""
+    return int(len(text) * 0.5)
 
+
+def budget_check_and_reserve(remaining_budget, prompt, output_reserve):
+    """
+    返回 (need, ok)：need = 估算输入 + 输出预留；ok = 剩余预算是否够。
+    """
+    need = estimate_input_tokens(prompt) + output_reserve
+    return need, (remaining_budget >= need)
 # --- Core Processing Functions ---
-def _run_direct_generation(problem_data, args, check_correctness_func_param: Callable): # New parameter
-    """Executes the first phase: direct code generation and evaluation."""
+def _run_direct_generation(problem_data, args, check_correctness_func_param: Callable):
     prompt = problem_data.get('complete_prompt', '')
-    generated_code, p_tokens, c_tokens = generator(prompt, "code3_generate", args.model)
-    # Use the passed-in function
-    eval_result = check_correctness_func_param(problem_data, generated_code, args.timeout)
-    return {"code": generated_code, "eval_result": eval_result, "prompt_tokens": p_tokens,
-            "completion_tokens": c_tokens}
+    output_reserve = getattr(args, "output_reserve", 2000)
+    remaining = getattr(args, "remaining_budget", None)
 
+    # 预算检查：不够就不发
+    if remaining is not None:
+        need, ok = budget_check_and_reserve(remaining, prompt, output_reserve)
+        if not ok:
+            return {"code": "", "eval_result": {"passed": False, "passed_count": 0, "total_count": 0},
+                    "prompt_tokens": 0, "completion_tokens": 0,
+                    "budget_stopped": True, "budget_need": need, "budget_remaining": remaining}
+
+    generated_code, p_tokens, c_tokens = generator(
+        prompt, "code3_generate", args.model, max_tokens_response=output_reserve
+    )
+
+    # 缺 usage：不可核验
+    if p_tokens is None or c_tokens is None:
+        return {"code": generated_code, "eval_result": {"passed": False, "passed_count": 0, "total_count": 0},
+                "prompt_tokens": None, "completion_tokens": None,
+                "usage_unverifiable": True}
+
+    if remaining is not None:
+        args.remaining_budget = remaining - (p_tokens + c_tokens)
+
+    eval_result = check_correctness_func_param(problem_data, generated_code, args.timeout)
+    return {"code": generated_code, "eval_result": eval_result,
+            "prompt_tokens": p_tokens, "completion_tokens": c_tokens}
 
 
 def _run_self_debugging(initial_code, initial_eval, problem_data, args, check_correctness_func_param: Callable):
@@ -311,8 +342,14 @@ def _run_self_debugging(initial_code, initial_eval, problem_data, args, check_co
     def get_hash(code_str):
         return hashlib.md5(code_str.encode('utf-8')).hexdigest()[:8] if code_str else "empty"
 
+    budget_exhausted = False
+    usage_unverifiable_flag = False
     for attempt in range(1, args.max_debug_attempts + 1):
         logging.info(f"--- Debug attempt: {attempt}/{args.max_debug_attempts} | Best: {best_eval.get('passed_count', 0)}/{best_eval.get('total_count', 1)} ---")
+
+        # 记录本轮起点，用于计算本轮增量（cost = 本轮增量；cost_cumulative = 累计）
+        p_tokens_at_attempt_start = p_tokens
+        c_tokens_at_attempt_start = c_tokens
 
         # 1. Instrumentation
         captured_prints = "Instrumentation skipped or not applicable."
@@ -320,7 +357,53 @@ def _run_self_debugging(initial_code, initial_eval, problem_data, args, check_co
         if not args.no_instrumentation:
             failure_info = format_check_correctness_result(last_eval)
             instr_prompt = _build_instrumentation_prompt(code_to_debug, instrumentation_suggestions, failure_info)
-            instrumented_code_gen, p, c = generator(instr_prompt, "code3_generate", args.model)
+            output_reserve = getattr(args, "output_reserve", 2000)
+            remaining = getattr(args, "remaining_budget", None)
+            if remaining is not None:
+                need, ok = budget_check_and_reserve(remaining, instr_prompt, output_reserve)
+                if not ok:
+                    logging.info(f"[budget] instrumentation skipped: need ~{need}, remaining {remaining}")
+                    budget_exhausted = True
+                    log.append({
+                        "attempt": attempt,
+                        "status": "budget_exhausted",
+                        "plan": None,
+                        "eval_result": {"passed": False, "passed_count": 0, "total_count": 0},
+                        "candidate_code_hash": "empty",
+                        "next_input_intended": get_hash(code_to_debug),
+                        "next_input_actual": None,
+                        "best_code_hash": get_hash(best_code),
+                        "candidate_code": "", "next_input_code": code_to_debug, "best_code": best_code,
+                        "stopped_reason": "Budget insufficient before instrumentation request",
+                        "budget_need": need,
+                        "budget_remaining": remaining,
+                        "cost": {"prompt_tokens": 0, "completion_tokens": 0},
+                        "cost_cumulative": {"prompt_tokens": p_tokens, "completion_tokens": c_tokens},
+                    })
+                    break
+            instrumented_code_gen, p, c = generator(
+                instr_prompt, "code3_generate", args.model,
+                max_tokens_response=output_reserve
+            )
+            if p is None or c is None:
+                logging.error("[budget] instrumentation usage unverifiable, stopping.")
+                usage_unverifiable_flag = True
+                log.append({
+                    "attempt": attempt,
+                    "status": "usage_unverifiable",
+                    "plan": None,
+                    "eval_result": {"passed": False, "passed_count": 0, "total_count": 0},
+                    "candidate_code_hash": "empty",
+                    "next_input_intended": get_hash(code_to_debug),
+                    "next_input_actual": None,
+                    "best_code_hash": get_hash(best_code),
+                    "candidate_code": "", "next_input_code": code_to_debug, "best_code": best_code,
+                    "stopped_reason": "Usage missing for instrumentation request",
+                    "cost": {"prompt_tokens": 0, "completion_tokens": 0},
+                    "cost_cumulative": {"prompt_tokens": p_tokens, "completion_tokens": c_tokens},
+                })
+                break
+            args.remaining_budget = remaining - (p + c)
             p_tokens, c_tokens = p_tokens + p, c_tokens + c
             if instrumented_code_gen.strip():
                 instrumented_code = instrumented_code_gen
@@ -330,7 +413,53 @@ def _run_self_debugging(initial_code, initial_eval, problem_data, args, check_co
 
         # 2. Analysis and Planning
         analysis_prompt = _build_analysis_planning_prompt(problem_data, instrumented_code, captured_prints, history)
-        llm_response, p, c = generator(analysis_prompt, "code4_generate", args.model)
+        output_reserve = getattr(args, "output_reserve", 2000)
+        remaining = getattr(args, "remaining_budget", None)
+        if remaining is not None:
+            need, ok = budget_check_and_reserve(remaining, analysis_prompt, output_reserve)
+            if not ok:
+                logging.info(f"[budget] analysis skipped: need ~{need}, remaining {remaining}")
+                budget_exhausted = True
+                log.append({
+                    "attempt": attempt,
+                    "status": "budget_exhausted",
+                    "plan": None,
+                    "eval_result": {"passed": False, "passed_count": 0, "total_count": 0},
+                    "candidate_code_hash": "empty",
+                    "next_input_intended": get_hash(code_to_debug),
+                    "next_input_actual": None,
+                    "best_code_hash": get_hash(best_code),
+                    "candidate_code": "", "next_input_code": code_to_debug, "best_code": best_code,
+                    "stopped_reason": "Budget insufficient before analysis request",
+                    "budget_need": need,
+                    "budget_remaining": remaining,
+                    "cost": {"prompt_tokens": 0, "completion_tokens": 0},
+                    "cost_cumulative": {"prompt_tokens": p_tokens, "completion_tokens": c_tokens},
+                })
+                break
+        llm_response, p, c = generator(
+            analysis_prompt, "code4_generate", args.model,
+            max_tokens_response=output_reserve
+        )
+        if p is None or c is None:
+            logging.error("[budget] analysis usage unverifiable, stopping.")
+            usage_unverifiable_flag = True
+            log.append({
+                "attempt": attempt,
+                "status": "usage_unverifiable",
+                "plan": None,
+                "eval_result": {"passed": False, "passed_count": 0, "total_count": 0},
+                "candidate_code_hash": "empty",
+                "next_input_intended": get_hash(code_to_debug),
+                "next_input_actual": None,
+                "best_code_hash": get_hash(best_code),
+                "candidate_code": "", "next_input_code": code_to_debug, "best_code": best_code,
+                "stopped_reason": "Usage missing for analysis request",
+                "cost": {"prompt_tokens": 0, "completion_tokens": 0},
+                "cost_cumulative": {"prompt_tokens": p_tokens, "completion_tokens": c_tokens},
+            })
+            break
+        args.remaining_budget = remaining - (p + c)
         p_tokens, c_tokens = p_tokens + p, c_tokens + c
 
         repair_plan, instrumentation_suggestions = _parse_llm_output(llm_response)
@@ -346,7 +475,11 @@ def _run_self_debugging(initial_code, initial_eval, problem_data, args, check_co
                 "best_code_hash": get_hash(best_code),
                 "candidate_code": "", "next_input_code": code_to_debug, "best_code": best_code,
                 "stopped_reason": "LLM did not provide a repair plan",
-                "cost": {"prompt_tokens": p_tokens, "completion_tokens": c_tokens}
+                "cost": {
+                    "prompt_tokens": p_tokens - p_tokens_at_attempt_start,
+                    "completion_tokens": c_tokens - c_tokens_at_attempt_start,
+                },
+                "cost_cumulative": {"prompt_tokens": p_tokens, "completion_tokens": c_tokens},
             }
             log.append(attempt_log); history.append(attempt_log)
             logging.info("LLM did not provide a repair plan, terminating debugging.")
@@ -354,7 +487,53 @@ def _run_self_debugging(initial_code, initial_eval, problem_data, args, check_co
 
         # 3. Code Implementation
         impl_prompt = _build_code_implementation_prompt(problem_data, code_to_debug, captured_prints, repair_plan)
-        llm_response_impl, p_impl, c_impl = generator(impl_prompt, "code4_generate", args.model)
+        output_reserve = getattr(args, "output_reserve", 2000)
+        remaining = getattr(args, "remaining_budget", None)
+        if remaining is not None:
+            need, ok = budget_check_and_reserve(remaining, impl_prompt, output_reserve)
+            if not ok:
+                logging.info(f"[budget] implementation skipped: need ~{need}, remaining {remaining}")
+                budget_exhausted = True
+                log.append({
+                    "attempt": attempt,
+                    "status": "budget_exhausted",
+                    "plan": None,
+                    "eval_result": {"passed": False, "passed_count": 0, "total_count": 0},
+                    "candidate_code_hash": "empty",
+                    "next_input_intended": get_hash(code_to_debug),
+                    "next_input_actual": None,
+                    "best_code_hash": get_hash(best_code),
+                    "candidate_code": "", "next_input_code": code_to_debug, "best_code": best_code,
+                    "stopped_reason": "Budget insufficient before implementation request",
+                    "budget_need": need,
+                    "budget_remaining": remaining,
+                    "cost": {"prompt_tokens": 0, "completion_tokens": 0},
+                    "cost_cumulative": {"prompt_tokens": p_tokens, "completion_tokens": c_tokens},
+                })
+                break
+        llm_response_impl, p_impl, c_impl = generator(
+            impl_prompt, "code4_generate", args.model,
+            max_tokens_response=output_reserve
+        )
+        if p_impl is None or c_impl is None:
+            logging.error("[budget] implementation usage unverifiable, stopping.")
+            usage_unverifiable_flag = True
+            log.append({
+                "attempt": attempt,
+                "status": "usage_unverifiable",
+                "plan": None,
+                "eval_result": {"passed": False, "passed_count": 0, "total_count": 0},
+                "candidate_code_hash": "empty",
+                "next_input_intended": get_hash(code_to_debug),
+                "next_input_actual": None,
+                "best_code_hash": get_hash(best_code),
+                "candidate_code": "", "next_input_code": code_to_debug, "best_code": best_code,
+                "stopped_reason": "Usage missing for implementation request",
+                "cost": {"prompt_tokens": 0, "completion_tokens": 0},
+                "cost_cumulative": {"prompt_tokens": p_tokens, "completion_tokens": c_tokens},
+            })
+            break
+        args.remaining_budget = remaining - (p_impl + c_impl)
         p_tokens, c_tokens = p_tokens + p_impl, c_tokens + c_impl
         candidate_code = _parse_implementation_output(llm_response_impl)
 
@@ -368,7 +547,11 @@ def _run_self_debugging(initial_code, initial_eval, problem_data, args, check_co
                 "best_code_hash": get_hash(best_code),
                 "candidate_code": "", "next_input_code": code_to_debug, "best_code": best_code,
                 "stopped_reason": "LLM did not provide valid code",
-                "cost": {"prompt_tokens": p_tokens, "completion_tokens": c_tokens}
+                "cost": {
+                    "prompt_tokens": p_tokens - p_tokens_at_attempt_start,
+                    "completion_tokens": c_tokens - c_tokens_at_attempt_start,
+                },
+                "cost_cumulative": {"prompt_tokens": p_tokens, "completion_tokens": c_tokens},
             }
             log.append(attempt_log); history.append(attempt_log)
             logging.info("LLM did not provide valid code, terminating debugging.")
@@ -388,8 +571,6 @@ def _run_self_debugging(initial_code, initial_eval, problem_data, args, check_co
             best_code, best_eval = candidate_code, eval_candidate
             code_to_debug = candidate_code
             logging.info(f"🎯 [第 {attempt} 轮] 全部通过！状态：passed | 候选代码Hash: {get_hash(candidate_code)}")
-            
-            # 成功时，把通过的代码也打印出来
             logging.info(f"===== 成功候选代码本体 =====\n{candidate_code}\n========================")
 
             attempt_log = {
@@ -399,7 +580,11 @@ def _run_self_debugging(initial_code, initial_eval, problem_data, args, check_co
                 "best_code_hash": get_hash(best_code),
                 "candidate_code": candidate_code, "next_input_code": code_to_debug, "best_code": best_code,
                 "stopped_reason": "All tests passed",
-                "cost": {"prompt_tokens": p_tokens, "completion_tokens": c_tokens}
+                "cost": {
+                    "prompt_tokens": p_tokens - p_tokens_at_attempt_start,
+                    "completion_tokens": c_tokens - c_tokens_at_attempt_start,
+                },
+                "cost_cumulative": {"prompt_tokens": p_tokens, "completion_tokens": c_tokens},
             }
             log.append(attempt_log); history.append(attempt_log)
             break
@@ -426,7 +611,6 @@ def _run_self_debugging(initial_code, initial_eval, problem_data, args, check_co
             code_to_debug = best_code
             last_eval = best_eval
 
-        # 判断是否真的会有下一轮
         will_continue = (attempt < args.max_debug_attempts) and (streak < args.max_no_improvement_streak)
 
         attempt_log = {
@@ -440,7 +624,11 @@ def _run_self_debugging(initial_code, initial_eval, problem_data, args, check_co
                 "Continued to next attempt" if will_continue
                 else ("Stagnation threshold reached" if streak >= args.max_no_improvement_streak else "Max attempts reached")
             ),
-            "cost": {"prompt_tokens": p_tokens, "completion_tokens": c_tokens}
+            "cost": {
+                "prompt_tokens": p_tokens - p_tokens_at_attempt_start,
+                "completion_tokens": c_tokens - c_tokens_at_attempt_start,
+            },
+            "cost_cumulative": {"prompt_tokens": p_tokens, "completion_tokens": c_tokens},
         }
         log.append(attempt_log); history.append(attempt_log)
 
@@ -448,16 +636,62 @@ def _run_self_debugging(initial_code, initial_eval, problem_data, args, check_co
             logging.info(f"{streak} consecutive attempts with no improvement, terminating debugging.")
             break
 
-    return {"final_code": best_code, "final_eval": best_eval, "session_log": log, "prompt_tokens": p_tokens, "completion_tokens": c_tokens}
-
+    return {
+        "final_code": best_code, "final_eval": best_eval, "session_log": log,
+        "prompt_tokens": p_tokens, "completion_tokens": c_tokens,
+        "budget_exhausted": budget_exhausted,
+        "budget_remaining": getattr(args, "remaining_budget", None),
+        "usage_unverifiable": usage_unverifiable_flag,
+    }
 
 # The `process_problem` function remains unchanged as it only calls the core functions above
-def process_problem(problem_data, task_id, args, check_correctness_func_param: Callable): # New parameter
-    # (This function does not need modification; it is copied from the previous version)
+def process_problem(problem_data, task_id, args, check_correctness_func_param: Callable):
+    # 每题开始前重置预算（若启用预算控制）
+    if getattr(args, "budget_total", None) is not None:
+        args.remaining_budget = args.budget_total
+
     print(f"\n{'=' * 25} Processing problem: {task_id} {'=' * 25}")
     start_time = time.time()
 
-    gen_res = _run_direct_generation(problem_data, args, check_correctness_func_param) # Pass parameter
+    gen_res = _run_direct_generation(problem_data, args, check_correctness_func_param)
+
+    # 分支：初始生成因预算不足被跳过
+    if gen_res.get("budget_stopped"):
+        result = {
+            "task_id": task_id, "model": args.model, "dataset": args.dataset,
+            "method_instrumentation": not args.no_instrumentation,
+            "method_two_step_repair": not args.no_two_step_repair,
+            "direct_gen_code": "", "direct_gen_eval": gen_res["eval_result"],
+            "direct_gen_passed": False,
+            "final_code": "", "final_eval": gen_res["eval_result"], "final_passed": False,
+            "stopped_reason": "Budget insufficient for initial generation",
+            "budget_need": gen_res.get("budget_need"),
+            "budget_remaining": gen_res.get("budget_remaining"),
+            "total_prompt_tokens": 0, "total_completion_tokens": 0,
+            "processing_time_seconds": time.time() - start_time,
+        }
+        print(f"Problem {task_id} processing completed. Final result: Failed (budget stopped)")
+        return result
+
+    # 分支：初始生成缺 usage，不可核验
+    if gen_res.get("usage_unverifiable"):
+        result = {
+            "task_id": task_id, "model": args.model, "dataset": args.dataset,
+            "method_instrumentation": not args.no_instrumentation,
+            "method_two_step_repair": not args.no_two_step_repair,
+            "direct_gen_code": gen_res["code"], "direct_gen_eval": gen_res["eval_result"],
+            "direct_gen_passed": False,
+            "final_code": gen_res["code"], "final_eval": gen_res["eval_result"], "final_passed": False,
+            "stopped_reason": "Initial generation usage unverifiable",
+            "total_prompt_tokens": None, "total_completion_tokens": None,
+            "processing_time_seconds": time.time() - start_time,
+        }
+        print(f"Problem {task_id} processing completed. Final result: Failed (usage unverifiable)")
+        return result
+
+    # 初始生成正常：判 None 后累加，不再重复赋值
+    total_p = gen_res["prompt_tokens"] if gen_res["prompt_tokens"] is not None else 0
+    total_c = gen_res["completion_tokens"] if gen_res["completion_tokens"] is not None else 0
 
     result = {
         "task_id": task_id, "model": args.model, "dataset": args.dataset,
@@ -467,25 +701,39 @@ def process_problem(problem_data, task_id, args, check_correctness_func_param: C
         "direct_gen_passed": gen_res["eval_result"].get("passed", False),
     }
 
-    total_p, total_c = gen_res["prompt_tokens"], gen_res["completion_tokens"]
-
     if result["direct_gen_passed"]:
         print("Direct generation passed successfully.")
-        result.update({"final_code": gen_res["code"], "final_eval": gen_res["eval_result"], "final_passed": True,
-                       "stopped_reason": "Passed on direct generation"})
+        result.update({
+            "final_code": gen_res["code"], "final_eval": gen_res["eval_result"],
+            "final_passed": True,
+            "stopped_reason": "Passed on direct generation",
+        })
     else:
         print("Direct generation failed, entering self-debugging phase.")
-        debug_res = _run_self_debugging(gen_res["code"], gen_res["eval_result"], problem_data, args, check_correctness_func_param) # Pass parameter
+        debug_res = _run_self_debugging(
+            gen_res["code"], gen_res["eval_result"], problem_data, args, check_correctness_func_param
+        )
+        session_log = debug_res["session_log"]
+        last_stopped_reason = (
+            session_log[-1].get("stopped_reason") if session_log else "No debug attempts"
+        )
         result.update({
             "final_code": debug_res["final_code"], "final_eval": debug_res["final_eval"],
             "final_passed": debug_res["final_eval"].get("passed", False),
-            "debug_session_log": debug_res["session_log"], "stopped_reason": "Debug cycle completed"
+            "debug_session_log": session_log, "stopped_reason": last_stopped_reason,
+            "budget_exhausted": debug_res.get("budget_exhausted", False),
+            "budget_remaining": debug_res.get("budget_remaining"),
+            "usage_unverifiable": debug_res.get("usage_unverifiable", False),
         })
-        total_p += debug_res["prompt_tokens"]
-        total_c += debug_res["completion_tokens"]
+        if debug_res["prompt_tokens"] is not None:
+            total_p += debug_res["prompt_tokens"]
+        if debug_res["completion_tokens"] is not None:
+            total_c += debug_res["completion_tokens"]
 
-    result.update({"total_prompt_tokens": total_p, "total_completion_tokens": total_c,
-                   "processing_time_seconds": time.time() - start_time})
+    result.update({
+        "total_prompt_tokens": total_p, "total_completion_tokens": total_c,
+        "processing_time_seconds": time.time() - start_time,
+    })
 
     print(f"Problem {task_id} processing completed. Final result: {'Passed' if result['final_passed'] else 'Failed'}")
     return result
