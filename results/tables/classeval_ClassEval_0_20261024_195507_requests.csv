@@ -1,0 +1,17 @@
+method,request_id,stage,prompt_tokens,completion_tokens,remaining_after,visible_passed_count,status
+tracecoder,0,direct_generation,566,588,13846,,direct_generation
+tracecoder,1,instrumentation,851,1034,11961,,instrumentation
+tracecoder,1,analysis_planning,2789,1395,7777,,analysis_planning
+tracecoder,1,implementation,3261,1217,3299,,implementation
+tracecoder,2,skipped_budget_instrumentation,0,0,3299,,skipped_budget_instrumentation
+independent_resample,1,resample,566,571,13863,,resample
+independent_resample,2,resample,566,583,12714,,resample
+independent_resample,3,resample,566,573,11575,,resample
+independent_resample,4,resample,566,555,10454,,resample
+independent_resample,5,resample,566,594,9294,,resample
+independent_resample,6,resample,566,555,8173,,resample
+independent_resample,7,resample,566,594,7013,,resample
+independent_resample,8,resample,566,528,5919,,resample
+independent_resample,9,resample,566,534,4819,,resample
+independent_resample,10,resample,566,603,3650,,resample
+independent_resample,11,resample,566,594,2490,,resample

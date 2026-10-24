@@ -1,0 +1,3 @@
+task_id,method,num_requests,prompt_tokens,completion_tokens,stopped_reason,final_visible_passed_count,final_code_hash,budget_remaining_after,evaluation_scope,selection_rule
+ClassEval_0,tracecoder,5,7467,4234,Budget insufficient before instrumentation request,14,289c55c6,3299,visible_tests_only,tracecoder_internal_best
+ClassEval_0,independent_resample,11,6226,6284,Budget insufficient before resample request,17,dfe0db4b,2490,visible_tests_only,highest_visible_pass_count; tie -> earliest_generated

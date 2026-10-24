@@ -1,0 +1,640 @@
+{
+    "dataset": "classeval",
+    "task_id": "ClassEval_0",
+    "run_timestamp": "20261024_195507",
+    "method": "independent_resample",
+    "candidates": [
+        {
+            "request_id": 1,
+            "code_hash": "1125e2c3",
+            "visible_passed_count": 12,
+            "visible_passed": false,
+            "code": "import logging\nimport datetime\n\nclass AccessGatewayFilter:\n    \"\"\"\n    This class is a filter used for accessing gateway filtering, primarily for authentication and access log recording.\n    \"\"\"\n\n    def __init__(self):\n        self.logger = logging.getLogger(__name__)\n\n    def filter(self, request):\n        \"\"\"\n        Filter the incoming request based on certain rules and conditions.\n        :param request: dict, the incoming request details\n        :return: bool, True if the request is allowed, False otherwise\n        \"\"\"\n        if not isinstance(request, dict):\n            return False\n        path = request.get('path', '')\n        if not self.is_start_with(path):\n            return True\n        user = self.get_jwt_user(request)\n        if user is not None:\n            self.set_current_user_info_and_log(user)\n            return True\n        return False\n\n    def is_start_with(self, request_uri):\n        \"\"\"\n        Check if the request URI starts with certain prefixes.\n        Currently, the prefixes being checked are \"/api\" and \"/login\".\n        :param request_uri: str, the URI of the request\n        :return: bool, True if the URI starts with certain prefixes, False otherwise\n        \"\"\"\n        if not isinstance(request_uri, str):\n            return False\n        return request_uri.startswith('/api') or request_uri.startswith('/login')\n\n    def get_jwt_user(self, request):\n        \"\"\"\n        Get the user information from the JWT token in the request.\n        :param request: dict, the incoming request details\n        :return: dict or None, the user information if the token is valid, None otherwise\n        \"\"\"\n        if not isinstance(request, dict):\n            return None\n        headers = request.get('headers')\n        if not isinstance(headers, dict):\n            return None\n        auth = headers.get('Authorization')\n        if not isinstance(auth, dict):\n            return None\n        user = auth.get('user')\n        jwt = auth.get('jwt')\n        if user is None or jwt is None:\n            return None\n        expected = str(user.get('name')) + str(datetime.date.today()) if isinstance(user, dict) else None\n        if expected is not None and jwt == expected:\n            return user\n        return None\n\n    def set_current_user_info_and_log(self, user):\n        \"\"\"\n        Set the current user information and log the access.\n        :param user: dict, the user information\n        :return: None\n        \"\"\"\n        if not isinstance(user, dict):\n            return\n        name = user.get('name', '')\n        address = user.get('address', '')\n        self.logger.info(\"user=%s address=%s time=%s\", name, address, datetime.datetime.now())",
+            "eval_result": {
+                "passed": false,
+                "passed_count": 12,
+                "failed_count": 7,
+                "total_count": 19,
+                "passed_tests": [
+                    "builtins.AccessGatewayFilterTestFilter.test_filter_5",
+                    "builtins.AccessGatewayFilterTestFilter.test_filter_8",
+                    "builtins.AccessGatewayFilterTestGetJwtUser.test_get_jwt_user_1",
+                    "builtins.AccessGatewayFilterTestGetJwtUser.test_get_jwt_user_2",
+                    "builtins.AccessGatewayFilterTestGetJwtUser.test_get_jwt_user_3",
+                    "builtins.AccessGatewayFilterTestGetJwtUser.test_get_jwt_user_4",
+                    "builtins.AccessGatewayFilterTestGetJwtUser.test_get_jwt_user_5",
+                    "builtins.AccessGatewayFilterTestIsStartWith.test_is_start_with_1",
+                    "builtins.AccessGatewayFilterTestIsStartWith.test_is_start_with_2",
+                    "builtins.AccessGatewayFilterTestIsStartWith.test_is_start_with_3",
+                    "builtins.AccessGatewayFilterTestIsStartWith.test_is_start_with_4",
+                    "builtins.AccessGatewayFilterTestIsStartWith.test_is_start_with_5"
+                ],
+                "failed_tests": [
+                    {
+                        "name": "builtins.AccessGatewayFilterTestFilter.test_filter_1",
+                        "type": "Failure",
+                        "details": "Traceback (most recent call last):\n  File \"<string>\", line 82, in test_filter_1\nAssertionError: False is not true\n"
+                    },
+                    {
+                        "name": "builtins.AccessGatewayFilterTestFilter.test_filter_2",
+                        "type": "Failure",
+                        "details": "Traceback (most recent call last):\n  File \"<string>\", line 88, in test_filter_2\nAssertionError: False is not true\n"
+                    },
+                    {
+                        "name": "builtins.AccessGatewayFilterTestFilter.test_filter_3",
+                        "type": "Failure",
+                        "details": "Traceback (most recent call last):\n  File \"<string>\", line 94, in test_filter_3\nAssertionError: False is not true\n"
+                    },
+                    {
+                        "name": "builtins.AccessGatewayFilterTestFilter.test_filter_4",
+                        "type": "Failure",
+                        "details": "Traceback (most recent call last):\n  File \"<string>\", line 100, in test_filter_4\nAssertionError: False is not true\n"
+                    },
+                    {
+                        "name": "builtins.AccessGatewayFilterTestFilter.test_filter_6",
+                        "type": "Failure",
+                        "details": "Traceback (most recent call last):\n  File \"<string>\", line 118, in test_filter_6\nAssertionError: True is not false\n"
+                    },
+                    {
+                        "name": "builtins.AccessGatewayFilterTestFilter.test_filter_7",
+                        "type": "Failure",
+                        "details": "Traceback (most recent call last):\n  File \"<string>\", line 127, in test_filter_7\nAssertionError: True is not None\n"
+                    },
+                    {
+                        "name": "builtins.AccessGatewayFilterTest.test_AccessGatewayFilter",
+                        "type": "Failure",
+                        "details": "Traceback (most recent call last):\n  File \"<string>\", line 213, in test_AccessGatewayFilter\nAssertionError: False is not true\n"
+                    }
+                ],
+                "stderr_output": "",
+                "result": null
+            },
+            "selected": false,
+            "selection_reason": ""
+        },
+        {
+            "request_id": 2,
+            "code_hash": "296abaa1",
+            "visible_passed_count": 12,
+            "visible_passed": false,
+            "code": "import logging\nimport datetime\n\nclass AccessGatewayFilter:\n    \"\"\"\n    This class is a filter used for accessing gateway filtering, primarily for authentication and access log recording.\n    \"\"\"\n\n    def __init__(self):\n        self.logger = logging.getLogger(__name__)\n\n    def filter(self, request):\n        \"\"\"\n        Filter the incoming request based on certain rules and conditions.\n        :param request: dict, the incoming request details\n        :return: bool, True if the request is allowed, False otherwise\n        \"\"\"\n        if not isinstance(request, dict):\n            return False\n\n        path = request.get('path', '')\n        if not self.is_start_with(path):\n            return True\n\n        user = self.get_jwt_user(request)\n        if user is not None:\n            self.set_current_user_info_and_log(user)\n            return True\n\n        return False\n\n    def is_start_with(self, request_uri):\n        \"\"\"\n        Check if the request URI starts with certain prefixes.\n        Currently, the prefixes being checked are \"/api\" and \"/login\".\n        :param request_uri: str, the URI of the request\n        :return: bool, True if the URI starts with certain prefixes, False otherwise\n        \"\"\"\n        if not isinstance(request_uri, str):\n            return False\n        return request_uri.startswith('/api') or request_uri.startswith('/login')\n\n    def get_jwt_user(self, request):\n        \"\"\"\n        Get the user information from the JWT token in the request.\n        :param request: dict, the incoming request details\n        :return: dict or None, the user information if the token is valid, None otherwise\n        \"\"\"\n        if not isinstance(request, dict):\n            return None\n\n        headers = request.get('headers')\n        if not isinstance(headers, dict):\n            return None\n\n        authorization = headers.get('Authorization')\n        if not isinstance(authorization, dict):\n            return None\n\n        user = authorization.get('user')\n        jwt = authorization.get('jwt')\n\n        if not isinstance(user, dict) or not isinstance(jwt, str):\n            return None\n\n        name = user.get('name')\n        if not isinstance(name, str):\n            return None\n\n        expected_jwt = name + str(datetime.date.today())\n        if jwt == expected_jwt:\n            return user\n\n        return None\n\n    def set_current_user_info_and_log(self, user):\n        \"\"\"\n        Set the current user information and log the access.\n        :param user: dict, the user information\n        :return: None\n        \"\"\"\n        if not isinstance(user, dict):\n            return\n\n        name = user.get('name', '')\n        address = user.get('address', '')\n        self.logger.info(\"user=%s address=%s time=%s\", name, address, datetime.datetime.now())",
+            "eval_result": {
+                "passed": false,
+                "passed_count": 12,
+                "failed_count": 7,
+                "total_count": 19,
+                "passed_tests": [
+                    "builtins.AccessGatewayFilterTestFilter.test_filter_5",
+                    "builtins.AccessGatewayFilterTestFilter.test_filter_8",
+                    "builtins.AccessGatewayFilterTestGetJwtUser.test_get_jwt_user_1",
+                    "builtins.AccessGatewayFilterTestGetJwtUser.test_get_jwt_user_2",
+                    "builtins.AccessGatewayFilterTestGetJwtUser.test_get_jwt_user_3",
+                    "builtins.AccessGatewayFilterTestGetJwtUser.test_get_jwt_user_4",
+                    "builtins.AccessGatewayFilterTestGetJwtUser.test_get_jwt_user_5",
+                    "builtins.AccessGatewayFilterTestIsStartWith.test_is_start_with_1",
+                    "builtins.AccessGatewayFilterTestIsStartWith.test_is_start_with_2",
+                    "builtins.AccessGatewayFilterTestIsStartWith.test_is_start_with_3",
+                    "builtins.AccessGatewayFilterTestIsStartWith.test_is_start_with_4",
+                    "builtins.AccessGatewayFilterTestIsStartWith.test_is_start_with_5"
+                ],
+                "failed_tests": [
+                    {
+                        "name": "builtins.AccessGatewayFilterTestFilter.test_filter_1",
+                        "type": "Failure",
+                        "details": "Traceback (most recent call last):\n  File \"<string>\", line 96, in test_filter_1\nAssertionError: False is not true\n"
+                    },
+                    {
+                        "name": "builtins.AccessGatewayFilterTestFilter.test_filter_2",
+                        "type": "Failure",
+                        "details": "Traceback (most recent call last):\n  File \"<string>\", line 102, in test_filter_2\nAssertionError: False is not true\n"
+                    },
+                    {
+                        "name": "builtins.AccessGatewayFilterTestFilter.test_filter_3",
+                        "type": "Failure",
+                        "details": "Traceback (most recent call last):\n  File \"<string>\", line 108, in test_filter_3\nAssertionError: False is not true\n"
+                    },
+                    {
+                        "name": "builtins.AccessGatewayFilterTestFilter.test_filter_4",
+                        "type": "Failure",
+                        "details": "Traceback (most recent call last):\n  File \"<string>\", line 114, in test_filter_4\nAssertionError: False is not true\n"
+                    },
+                    {
+                        "name": "builtins.AccessGatewayFilterTestFilter.test_filter_6",
+                        "type": "Failure",
+                        "details": "Traceback (most recent call last):\n  File \"<string>\", line 132, in test_filter_6\nAssertionError: True is not false\n"
+                    },
+                    {
+                        "name": "builtins.AccessGatewayFilterTestFilter.test_filter_7",
+                        "type": "Failure",
+                        "details": "Traceback (most recent call last):\n  File \"<string>\", line 141, in test_filter_7\nAssertionError: True is not None\n"
+                    },
+                    {
+                        "name": "builtins.AccessGatewayFilterTest.test_AccessGatewayFilter",
+                        "type": "Failure",
+                        "details": "Traceback (most recent call last):\n  File \"<string>\", line 227, in test_AccessGatewayFilter\nAssertionError: False is not true\n"
+                    }
+                ],
+                "stderr_output": "",
+                "result": null
+            },
+            "selected": false,
+            "selection_reason": ""
+        },
+        {
+            "request_id": 3,
+            "code_hash": "dfe0db4b",
+            "visible_passed_count": 17,
+            "visible_passed": false,
+            "code": "import logging\nimport datetime\n\nclass AccessGatewayFilter:\n    \"\"\"\n    This class is a filter used for accessing gateway filtering, primarily for authentication and access log recording.\n    \"\"\"\n\n    def __init__(self):\n        self.logger = logging.getLogger(__name__)\n        self.current_user_info = None\n\n    def filter(self, request):\n        \"\"\"\n        Filter the incoming request based on certain rules and conditions.\n        :param request: dict, the incoming request details\n        :return: bool, True if the request is allowed, False otherwise\n        \"\"\"\n        path = request.get('path', '')\n        if self.is_start_with(path):\n            return True\n        user = self.get_jwt_user(request)\n        if user is not None:\n            self.set_current_user_info_and_log(user)\n            return True\n        return False\n\n    def is_start_with(self, request_uri):\n        \"\"\"\n        Check if the request URI starts with certain prefixes.\n        :param request_uri: str, the URI of the request\n        :return: bool, True if the URI starts with certain prefixes, False otherwise\n        \"\"\"\n        if not isinstance(request_uri, str):\n            return False\n        return request_uri.startswith('/api') or request_uri.startswith('/login')\n\n    def get_jwt_user(self, request):\n        \"\"\"\n        Get the user information from the JWT token in the request.\n        :param request: dict, the incoming request details\n        :return: dict or None, the user information if the token is valid, None otherwise\n        \"\"\"\n        headers = request.get('headers') if isinstance(request, dict) else None\n        if not isinstance(headers, dict):\n            return None\n        auth = headers.get('Authorization')\n        if not isinstance(auth, dict):\n            return None\n        user = auth.get('user')\n        jwt = auth.get('jwt')\n        if user is None or jwt is None:\n            return None\n        name = user.get('name') if isinstance(user, dict) else None\n        if name is None:\n            return None\n        expected = str(name) + str(datetime.date.today())\n        if jwt == expected:\n            return user\n        return None\n\n    def set_current_user_info_and_log(self, user):\n        \"\"\"\n        Set the current user information and log the access.\n        :param user: dict, the user information\n        :return: None\n        \"\"\"\n        self.current_user_info = user\n        if isinstance(user, dict):\n            name = user.get('name', '')\n            address = user.get('address', '')\n        else:\n            name = ''\n            address = ''\n        self.logger.info(\"user=%s address=%s time=%s\", name, address, datetime.datetime.now())",
+            "eval_result": {
+                "passed": false,
+                "passed_count": 17,
+                "failed_count": 2,
+                "total_count": 19,
+                "passed_tests": [
+                    "builtins.AccessGatewayFilterTest.test_AccessGatewayFilter",
+                    "builtins.AccessGatewayFilterTestFilter.test_filter_1",
+                    "builtins.AccessGatewayFilterTestFilter.test_filter_2",
+                    "builtins.AccessGatewayFilterTestFilter.test_filter_3",
+                    "builtins.AccessGatewayFilterTestFilter.test_filter_4",
+                    "builtins.AccessGatewayFilterTestFilter.test_filter_5",
+                    "builtins.AccessGatewayFilterTestFilter.test_filter_6",
+                    "builtins.AccessGatewayFilterTestGetJwtUser.test_get_jwt_user_1",
+                    "builtins.AccessGatewayFilterTestGetJwtUser.test_get_jwt_user_2",
+                    "builtins.AccessGatewayFilterTestGetJwtUser.test_get_jwt_user_3",
+                    "builtins.AccessGatewayFilterTestGetJwtUser.test_get_jwt_user_4",
+                    "builtins.AccessGatewayFilterTestGetJwtUser.test_get_jwt_user_5",
+                    "builtins.AccessGatewayFilterTestIsStartWith.test_is_start_with_1",
+                    "builtins.AccessGatewayFilterTestIsStartWith.test_is_start_with_2",
+                    "builtins.AccessGatewayFilterTestIsStartWith.test_is_start_with_3",
+                    "builtins.AccessGatewayFilterTestIsStartWith.test_is_start_with_4",
+                    "builtins.AccessGatewayFilterTestIsStartWith.test_is_start_with_5"
+                ],
+                "failed_tests": [
+                    {
+                        "name": "builtins.AccessGatewayFilterTestFilter.test_filter_7",
+                        "type": "Failure",
+                        "details": "Traceback (most recent call last):\n  File \"<string>\", line 129, in test_filter_7\nAssertionError: True is not None\n"
+                    },
+                    {
+                        "name": "builtins.AccessGatewayFilterTestFilter.test_filter_8",
+                        "type": "Failure",
+                        "details": "Traceback (most recent call last):\n  File \"<string>\", line 138, in test_filter_8\nAssertionError: False is not true\n"
+                    }
+                ],
+                "stderr_output": "",
+                "result": null
+            },
+            "selected": true,
+            "selection_reason": "highest_visible_pass_count; tie -> earliest_generated"
+        },
+        {
+            "request_id": 4,
+            "code_hash": "bf2acd21",
+            "visible_passed_count": 17,
+            "visible_passed": false,
+            "code": "import logging\nimport datetime\n\nclass AccessGatewayFilter:\n    \"\"\"\n    This class is a filter used for accessing gateway filtering, primarily for authentication and access log recording.\n    \"\"\"\n\n    def __init__(self):\n        self.logger = logging.getLogger(__name__)\n\n    def filter(self, request):\n        \"\"\"\n        Filter the incoming request based on certain rules and conditions.\n        :param request: dict, the incoming request details\n        :return: bool, True if the request is allowed, False otherwise\n        \"\"\"\n        path = request.get('path', '')\n        if self.is_start_with(path):\n            return True\n        user = self.get_jwt_user(request)\n        if user is not None:\n            self.set_current_user_info_and_log(user)\n            return True\n        return False\n\n    def is_start_with(self, request_uri):\n        \"\"\"\n        Check if the request URI starts with certain prefixes.\n        Currently, the prefixes being checked are \"/api\" and \"/login\".\n        :param request_uri: str, the URI of the request\n        :return: bool, True if the URI starts with certain prefixes, False otherwise\n        \"\"\"\n        if not isinstance(request_uri, str):\n            return False\n        return request_uri.startswith('/api') or request_uri.startswith('/login')\n\n    def get_jwt_user(self, request):\n        \"\"\"\n        Get the user information from the JWT token in the request.\n        :param request: dict, the incoming request details\n        :return: dict or None, the user information if the token is valid, None otherwise\n        \"\"\"\n        headers = request.get('headers') if isinstance(request, dict) else None\n        if not isinstance(headers, dict):\n            return None\n        auth = headers.get('Authorization')\n        if not isinstance(auth, dict):\n            return None\n        user = auth.get('user')\n        jwt = auth.get('jwt')\n        if user is None or jwt is None:\n            return None\n        expected = str(user.get('name')) + str(datetime.date.today()) if isinstance(user, dict) else None\n        if expected is not None and jwt == expected:\n            return user\n        return None\n\n    def set_current_user_info_and_log(self, user):\n        \"\"\"\n        Set the current user information and log the access.\n        :param user: dict, the user information\n        :return: None\n        \"\"\"\n        if not isinstance(user, dict):\n            return\n        name = user.get('name', '')\n        address = user.get('address', '')\n        self.logger.info(\"user=%s address=%s time=%s\", name, address, datetime.datetime.now())",
+            "eval_result": {
+                "passed": false,
+                "passed_count": 17,
+                "failed_count": 2,
+                "total_count": 19,
+                "passed_tests": [
+                    "builtins.AccessGatewayFilterTest.test_AccessGatewayFilter",
+                    "builtins.AccessGatewayFilterTestFilter.test_filter_1",
+                    "builtins.AccessGatewayFilterTestFilter.test_filter_2",
+                    "builtins.AccessGatewayFilterTestFilter.test_filter_3",
+                    "builtins.AccessGatewayFilterTestFilter.test_filter_4",
+                    "builtins.AccessGatewayFilterTestFilter.test_filter_5",
+                    "builtins.AccessGatewayFilterTestFilter.test_filter_6",
+                    "builtins.AccessGatewayFilterTestGetJwtUser.test_get_jwt_user_1",
+                    "builtins.AccessGatewayFilterTestGetJwtUser.test_get_jwt_user_2",
+                    "builtins.AccessGatewayFilterTestGetJwtUser.test_get_jwt_user_3",
+                    "builtins.AccessGatewayFilterTestGetJwtUser.test_get_jwt_user_4",
+                    "builtins.AccessGatewayFilterTestGetJwtUser.test_get_jwt_user_5",
+                    "builtins.AccessGatewayFilterTestIsStartWith.test_is_start_with_1",
+                    "builtins.AccessGatewayFilterTestIsStartWith.test_is_start_with_2",
+                    "builtins.AccessGatewayFilterTestIsStartWith.test_is_start_with_3",
+                    "builtins.AccessGatewayFilterTestIsStartWith.test_is_start_with_4",
+                    "builtins.AccessGatewayFilterTestIsStartWith.test_is_start_with_5"
+                ],
+                "failed_tests": [
+                    {
+                        "name": "builtins.AccessGatewayFilterTestFilter.test_filter_7",
+                        "type": "Failure",
+                        "details": "Traceback (most recent call last):\n  File \"<string>\", line 123, in test_filter_7\nAssertionError: True is not None\n"
+                    },
+                    {
+                        "name": "builtins.AccessGatewayFilterTestFilter.test_filter_8",
+                        "type": "Failure",
+                        "details": "Traceback (most recent call last):\n  File \"<string>\", line 132, in test_filter_8\nAssertionError: False is not true\n"
+                    }
+                ],
+                "stderr_output": "",
+                "result": null
+            },
+            "selected": false,
+            "selection_reason": ""
+        },
+        {
+            "request_id": 5,
+            "code_hash": "c3781060",
+            "visible_passed_count": 17,
+            "visible_passed": false,
+            "code": "import logging\nimport datetime\n\nclass AccessGatewayFilter:\n    \"\"\"\n    This class is a filter used for accessing gateway filtering, primarily for authentication and access log recording.\n    \"\"\"\n\n    def __init__(self):\n        self.logger = logging.getLogger(__name__)\n\n    def filter(self, request):\n        \"\"\"\n        Filter the incoming request based on certain rules and conditions.\n        :param request: dict, the incoming request details\n        :return: bool, True if the request is allowed, False otherwise\n        \"\"\"\n        if not isinstance(request, dict):\n            return False\n\n        path = request.get('path', '')\n        if not isinstance(path, str):\n            return False\n\n        if self.is_start_with(path):\n            return True\n\n        user = self.get_jwt_user(request)\n        if user is not None:\n            self.set_current_user_info_and_log(user)\n            return True\n\n        return False\n\n    def is_start_with(self, request_uri):\n        \"\"\"\n        Check if the request URI starts with certain prefixes.\n        Currently, the prefixes being checked are \"/api\" and \"/login\".\n        :param request_uri: str, the URI of the request\n        :return: bool, True if the URI starts with certain prefixes, False otherwise\n        \"\"\"\n        if not isinstance(request_uri, str):\n            return False\n        return request_uri.startswith('/api') or request_uri.startswith('/login')\n\n    def get_jwt_user(self, request):\n        \"\"\"\n        Get the user information from the JWT token in the request.\n        :param request: dict, the incoming request details\n        :return: dict or None, the user information if the token is valid, None otherwise\n        \"\"\"\n        if not isinstance(request, dict):\n            return None\n\n        headers = request.get('headers')\n        if not isinstance(headers, dict):\n            return None\n\n        authorization = headers.get('Authorization')\n        if not isinstance(authorization, dict):\n            return None\n\n        user = authorization.get('user')\n        jwt = authorization.get('jwt')\n\n        if not isinstance(user, dict) or not isinstance(jwt, str):\n            return None\n\n        name = user.get('name')\n        if not isinstance(name, str):\n            return None\n\n        expected_jwt = name + str(datetime.date.today())\n        if jwt != expected_jwt:\n            return None\n\n        return user\n\n    def set_current_user_info_and_log(self, user):\n        \"\"\"\n        Set the current user information and log the access.\n        :param user: dict, the user information\n        :return: None\n        \"\"\"\n        if not isinstance(user, dict):\n            return\n\n        name = user.get('name', '')\n        address = user.get('address', '')\n        self.logger.info(\"user=%s address=%s time=%s\", name, address, datetime.datetime.now())",
+            "eval_result": {
+                "passed": false,
+                "passed_count": 17,
+                "failed_count": 2,
+                "total_count": 19,
+                "passed_tests": [
+                    "builtins.AccessGatewayFilterTest.test_AccessGatewayFilter",
+                    "builtins.AccessGatewayFilterTestFilter.test_filter_1",
+                    "builtins.AccessGatewayFilterTestFilter.test_filter_2",
+                    "builtins.AccessGatewayFilterTestFilter.test_filter_3",
+                    "builtins.AccessGatewayFilterTestFilter.test_filter_4",
+                    "builtins.AccessGatewayFilterTestFilter.test_filter_5",
+                    "builtins.AccessGatewayFilterTestFilter.test_filter_6",
+                    "builtins.AccessGatewayFilterTestGetJwtUser.test_get_jwt_user_1",
+                    "builtins.AccessGatewayFilterTestGetJwtUser.test_get_jwt_user_2",
+                    "builtins.AccessGatewayFilterTestGetJwtUser.test_get_jwt_user_3",
+                    "builtins.AccessGatewayFilterTestGetJwtUser.test_get_jwt_user_4",
+                    "builtins.AccessGatewayFilterTestGetJwtUser.test_get_jwt_user_5",
+                    "builtins.AccessGatewayFilterTestIsStartWith.test_is_start_with_1",
+                    "builtins.AccessGatewayFilterTestIsStartWith.test_is_start_with_2",
+                    "builtins.AccessGatewayFilterTestIsStartWith.test_is_start_with_3",
+                    "builtins.AccessGatewayFilterTestIsStartWith.test_is_start_with_4",
+                    "builtins.AccessGatewayFilterTestIsStartWith.test_is_start_with_5"
+                ],
+                "failed_tests": [
+                    {
+                        "name": "builtins.AccessGatewayFilterTestFilter.test_filter_7",
+                        "type": "Failure",
+                        "details": "Traceback (most recent call last):\n  File \"<string>\", line 144, in test_filter_7\nAssertionError: True is not None\n"
+                    },
+                    {
+                        "name": "builtins.AccessGatewayFilterTestFilter.test_filter_8",
+                        "type": "Failure",
+                        "details": "Traceback (most recent call last):\n  File \"<string>\", line 153, in test_filter_8\nAssertionError: False is not true\n"
+                    }
+                ],
+                "stderr_output": "",
+                "result": null
+            },
+            "selected": false,
+            "selection_reason": ""
+        },
+        {
+            "request_id": 6,
+            "code_hash": "bf2acd21",
+            "visible_passed_count": 17,
+            "visible_passed": false,
+            "code": "import logging\nimport datetime\n\nclass AccessGatewayFilter:\n    \"\"\"\n    This class is a filter used for accessing gateway filtering, primarily for authentication and access log recording.\n    \"\"\"\n\n    def __init__(self):\n        self.logger = logging.getLogger(__name__)\n\n    def filter(self, request):\n        \"\"\"\n        Filter the incoming request based on certain rules and conditions.\n        :param request: dict, the incoming request details\n        :return: bool, True if the request is allowed, False otherwise\n        \"\"\"\n        path = request.get('path', '')\n        if self.is_start_with(path):\n            return True\n        user = self.get_jwt_user(request)\n        if user is not None:\n            self.set_current_user_info_and_log(user)\n            return True\n        return False\n\n    def is_start_with(self, request_uri):\n        \"\"\"\n        Check if the request URI starts with certain prefixes.\n        Currently, the prefixes being checked are \"/api\" and \"/login\".\n        :param request_uri: str, the URI of the request\n        :return: bool, True if the URI starts with certain prefixes, False otherwise\n        \"\"\"\n        if not isinstance(request_uri, str):\n            return False\n        return request_uri.startswith('/api') or request_uri.startswith('/login')\n\n    def get_jwt_user(self, request):\n        \"\"\"\n        Get the user information from the JWT token in the request.\n        :param request: dict, the incoming request details\n        :return: dict or None, the user information if the token is valid, None otherwise\n        \"\"\"\n        headers = request.get('headers') if isinstance(request, dict) else None\n        if not isinstance(headers, dict):\n            return None\n        auth = headers.get('Authorization')\n        if not isinstance(auth, dict):\n            return None\n        user = auth.get('user')\n        jwt = auth.get('jwt')\n        if user is None or jwt is None:\n            return None\n        expected = str(user.get('name')) + str(datetime.date.today()) if isinstance(user, dict) else None\n        if expected is not None and jwt == expected:\n            return user\n        return None\n\n    def set_current_user_info_and_log(self, user):\n        \"\"\"\n        Set the current user information and log the access.\n        :param user: dict, the user information\n        :return: None\n        \"\"\"\n        if not isinstance(user, dict):\n            return\n        name = user.get('name', '')\n        address = user.get('address', '')\n        self.logger.info(\"user=%s address=%s time=%s\", name, address, datetime.datetime.now())",
+            "eval_result": {
+                "passed": false,
+                "passed_count": 17,
+                "failed_count": 2,
+                "total_count": 19,
+                "passed_tests": [
+                    "builtins.AccessGatewayFilterTest.test_AccessGatewayFilter",
+                    "builtins.AccessGatewayFilterTestFilter.test_filter_1",
+                    "builtins.AccessGatewayFilterTestFilter.test_filter_2",
+                    "builtins.AccessGatewayFilterTestFilter.test_filter_3",
+                    "builtins.AccessGatewayFilterTestFilter.test_filter_4",
+                    "builtins.AccessGatewayFilterTestFilter.test_filter_5",
+                    "builtins.AccessGatewayFilterTestFilter.test_filter_6",
+                    "builtins.AccessGatewayFilterTestGetJwtUser.test_get_jwt_user_1",
+                    "builtins.AccessGatewayFilterTestGetJwtUser.test_get_jwt_user_2",
+                    "builtins.AccessGatewayFilterTestGetJwtUser.test_get_jwt_user_3",
+                    "builtins.AccessGatewayFilterTestGetJwtUser.test_get_jwt_user_4",
+                    "builtins.AccessGatewayFilterTestGetJwtUser.test_get_jwt_user_5",
+                    "builtins.AccessGatewayFilterTestIsStartWith.test_is_start_with_1",
+                    "builtins.AccessGatewayFilterTestIsStartWith.test_is_start_with_2",
+                    "builtins.AccessGatewayFilterTestIsStartWith.test_is_start_with_3",
+                    "builtins.AccessGatewayFilterTestIsStartWith.test_is_start_with_4",
+                    "builtins.AccessGatewayFilterTestIsStartWith.test_is_start_with_5"
+                ],
+                "failed_tests": [
+                    {
+                        "name": "builtins.AccessGatewayFilterTestFilter.test_filter_7",
+                        "type": "Failure",
+                        "details": "Traceback (most recent call last):\n  File \"<string>\", line 123, in test_filter_7\nAssertionError: True is not None\n"
+                    },
+                    {
+                        "name": "builtins.AccessGatewayFilterTestFilter.test_filter_8",
+                        "type": "Failure",
+                        "details": "Traceback (most recent call last):\n  File \"<string>\", line 132, in test_filter_8\nAssertionError: False is not true\n"
+                    }
+                ],
+                "stderr_output": "",
+                "result": null
+            },
+            "selected": false,
+            "selection_reason": ""
+        },
+        {
+            "request_id": 7,
+            "code_hash": "a926be7e",
+            "visible_passed_count": 12,
+            "visible_passed": false,
+            "code": "import logging\nimport datetime\n\nclass AccessGatewayFilter:\n    \"\"\"\n    This class is a filter used for accessing gateway filtering, primarily for authentication and access log recording.\n    \"\"\"\n\n    def __init__(self):\n        self.logger = logging.getLogger(__name__)\n\n    def filter(self, request):\n        \"\"\"\n        Filter the incoming request based on certain rules and conditions.\n        :param request: dict, the incoming request details\n        :return: bool, True if the request is allowed, False otherwise\n        \"\"\"\n        if not isinstance(request, dict):\n            return False\n\n        path = request.get('path', '')\n        if not isinstance(path, str):\n            return False\n\n        if not self.is_start_with(path):\n            return True\n\n        user = self.get_jwt_user(request)\n        if user is None:\n            return False\n\n        self.set_current_user_info_and_log(user)\n        return True\n\n    def is_start_with(self, request_uri):\n        \"\"\"\n        Check if the request URI starts with certain prefixes.\n        Currently, the prefixes being checked are \"/api\" and \"/login\".\n        :param request_uri: str, the URI of the request\n        :return: bool, True if the URI starts with certain prefixes, False otherwise\n        \"\"\"\n        if not isinstance(request_uri, str):\n            return False\n        return request_uri.startswith('/api') or request_uri.startswith('/login')\n\n    def get_jwt_user(self, request):\n        \"\"\"\n        Get the user information from the JWT token in the request.\n        :param request: dict, the incoming request details\n        :return: dict or None, the user information if the token is valid, None otherwise\n        \"\"\"\n        if not isinstance(request, dict):\n            return None\n\n        headers = request.get('headers')\n        if not isinstance(headers, dict):\n            return None\n\n        authorization = headers.get('Authorization')\n        if not isinstance(authorization, dict):\n            return None\n\n        user = authorization.get('user')\n        jwt = authorization.get('jwt')\n\n        if not isinstance(user, dict) or not isinstance(jwt, str):\n            return None\n\n        name = user.get('name')\n        if not isinstance(name, str):\n            return None\n\n        expected_jwt = name + str(datetime.date.today())\n        if jwt != expected_jwt:\n            return None\n\n        return user\n\n    def set_current_user_info_and_log(self, user):\n        \"\"\"\n        Set the current user information and log the access.\n        :param user: dict, the user information\n        :return: None\n        \"\"\"\n        if not isinstance(user, dict):\n            return\n\n        name = user.get('name', '')\n        address = user.get('address', '')\n        self.logger.info(\"user=%s address=%s time=%s\", name, address, datetime.datetime.now())",
+            "eval_result": {
+                "passed": false,
+                "passed_count": 12,
+                "failed_count": 7,
+                "total_count": 19,
+                "passed_tests": [
+                    "builtins.AccessGatewayFilterTestFilter.test_filter_5",
+                    "builtins.AccessGatewayFilterTestFilter.test_filter_8",
+                    "builtins.AccessGatewayFilterTestGetJwtUser.test_get_jwt_user_1",
+                    "builtins.AccessGatewayFilterTestGetJwtUser.test_get_jwt_user_2",
+                    "builtins.AccessGatewayFilterTestGetJwtUser.test_get_jwt_user_3",
+                    "builtins.AccessGatewayFilterTestGetJwtUser.test_get_jwt_user_4",
+                    "builtins.AccessGatewayFilterTestGetJwtUser.test_get_jwt_user_5",
+                    "builtins.AccessGatewayFilterTestIsStartWith.test_is_start_with_1",
+                    "builtins.AccessGatewayFilterTestIsStartWith.test_is_start_with_2",
+                    "builtins.AccessGatewayFilterTestIsStartWith.test_is_start_with_3",
+                    "builtins.AccessGatewayFilterTestIsStartWith.test_is_start_with_4",
+                    "builtins.AccessGatewayFilterTestIsStartWith.test_is_start_with_5"
+                ],
+                "failed_tests": [
+                    {
+                        "name": "builtins.AccessGatewayFilterTestFilter.test_filter_1",
+                        "type": "Failure",
+                        "details": "Traceback (most recent call last):\n  File \"<string>\", line 99, in test_filter_1\nAssertionError: False is not true\n"
+                    },
+                    {
+                        "name": "builtins.AccessGatewayFilterTestFilter.test_filter_2",
+                        "type": "Failure",
+                        "details": "Traceback (most recent call last):\n  File \"<string>\", line 105, in test_filter_2\nAssertionError: False is not true\n"
+                    },
+                    {
+                        "name": "builtins.AccessGatewayFilterTestFilter.test_filter_3",
+                        "type": "Failure",
+                        "details": "Traceback (most recent call last):\n  File \"<string>\", line 111, in test_filter_3\nAssertionError: False is not true\n"
+                    },
+                    {
+                        "name": "builtins.AccessGatewayFilterTestFilter.test_filter_4",
+                        "type": "Failure",
+                        "details": "Traceback (most recent call last):\n  File \"<string>\", line 117, in test_filter_4\nAssertionError: False is not true\n"
+                    },
+                    {
+                        "name": "builtins.AccessGatewayFilterTestFilter.test_filter_6",
+                        "type": "Failure",
+                        "details": "Traceback (most recent call last):\n  File \"<string>\", line 135, in test_filter_6\nAssertionError: True is not false\n"
+                    },
+                    {
+                        "name": "builtins.AccessGatewayFilterTestFilter.test_filter_7",
+                        "type": "Failure",
+                        "details": "Traceback (most recent call last):\n  File \"<string>\", line 144, in test_filter_7\nAssertionError: True is not None\n"
+                    },
+                    {
+                        "name": "builtins.AccessGatewayFilterTest.test_AccessGatewayFilter",
+                        "type": "Failure",
+                        "details": "Traceback (most recent call last):\n  File \"<string>\", line 230, in test_AccessGatewayFilter\nAssertionError: False is not true\n"
+                    }
+                ],
+                "stderr_output": "",
+                "result": null
+            },
+            "selected": false,
+            "selection_reason": ""
+        },
+        {
+            "request_id": 8,
+            "code_hash": "d10c27dc",
+            "visible_passed_count": 17,
+            "visible_passed": false,
+            "code": "import logging\nimport datetime\n\nclass AccessGatewayFilter:\n    \"\"\"\n    This class is a filter used for accessing gateway filtering, primarily for authentication and access log recording.\n    \"\"\"\n\n    def __init__(self):\n        self.logger = logging.getLogger(__name__)\n\n    def filter(self, request):\n        \"\"\"\n        Filter the incoming request based on certain rules and conditions.\n        :param request: dict, the incoming request details\n        :return: bool, True if the request is allowed, False otherwise\n        \"\"\"\n        path = request.get('path', '')\n        if self.is_start_with(path):\n            return True\n        user = self.get_jwt_user(request)\n        if user is not None:\n            self.set_current_user_info_and_log(user)\n            return True\n        return False\n\n    def is_start_with(self, request_uri):\n        \"\"\"\n        Check if the request URI starts with certain prefixes.\n        Currently, the prefixes being checked are \"/api\" and \"/login\".\n        :param request_uri: str, the URI of the request\n        :return: bool, True if the URI starts with certain prefixes, False otherwise\n        \"\"\"\n        if not isinstance(request_uri, str):\n            return False\n        return request_uri.startswith('/api') or request_uri.startswith('/login')\n\n    def get_jwt_user(self, request):\n        \"\"\"\n        Get the user information from the JWT token in the request.\n        :param request: dict, the incoming request details\n        :return: dict or None, the user information if the token is valid, None otherwise\n        \"\"\"\n        headers = request.get('headers')\n        if not isinstance(headers, dict):\n            return None\n        auth = headers.get('Authorization')\n        if not isinstance(auth, dict):\n            return None\n        user = auth.get('user')\n        jwt = auth.get('jwt')\n        if user is None or jwt is None:\n            return None\n        expected = str(user.get('name')) + str(datetime.date.today())\n        if jwt == expected:\n            return user\n        return None\n\n    def set_current_user_info_and_log(self, user):\n        \"\"\"\n        Set the current user information and log the access.\n        :param user: dict, the user information\n        :return: None\n        \"\"\"\n        if not isinstance(user, dict):\n            return\n        name = user.get('name', '')\n        address = user.get('address', '')\n        self.logger.info('%s %s %s', name, address, datetime.datetime.now())",
+            "eval_result": {
+                "passed": false,
+                "passed_count": 17,
+                "failed_count": 2,
+                "total_count": 19,
+                "passed_tests": [
+                    "builtins.AccessGatewayFilterTest.test_AccessGatewayFilter",
+                    "builtins.AccessGatewayFilterTestFilter.test_filter_1",
+                    "builtins.AccessGatewayFilterTestFilter.test_filter_2",
+                    "builtins.AccessGatewayFilterTestFilter.test_filter_3",
+                    "builtins.AccessGatewayFilterTestFilter.test_filter_4",
+                    "builtins.AccessGatewayFilterTestFilter.test_filter_5",
+                    "builtins.AccessGatewayFilterTestFilter.test_filter_6",
+                    "builtins.AccessGatewayFilterTestGetJwtUser.test_get_jwt_user_1",
+                    "builtins.AccessGatewayFilterTestGetJwtUser.test_get_jwt_user_2",
+                    "builtins.AccessGatewayFilterTestGetJwtUser.test_get_jwt_user_3",
+                    "builtins.AccessGatewayFilterTestGetJwtUser.test_get_jwt_user_4",
+                    "builtins.AccessGatewayFilterTestGetJwtUser.test_get_jwt_user_5",
+                    "builtins.AccessGatewayFilterTestIsStartWith.test_is_start_with_1",
+                    "builtins.AccessGatewayFilterTestIsStartWith.test_is_start_with_2",
+                    "builtins.AccessGatewayFilterTestIsStartWith.test_is_start_with_3",
+                    "builtins.AccessGatewayFilterTestIsStartWith.test_is_start_with_4",
+                    "builtins.AccessGatewayFilterTestIsStartWith.test_is_start_with_5"
+                ],
+                "failed_tests": [
+                    {
+                        "name": "builtins.AccessGatewayFilterTestFilter.test_filter_7",
+                        "type": "Failure",
+                        "details": "Traceback (most recent call last):\n  File \"<string>\", line 123, in test_filter_7\nAssertionError: True is not None\n"
+                    },
+                    {
+                        "name": "builtins.AccessGatewayFilterTestFilter.test_filter_8",
+                        "type": "Failure",
+                        "details": "Traceback (most recent call last):\n  File \"<string>\", line 132, in test_filter_8\nAssertionError: False is not true\n"
+                    }
+                ],
+                "stderr_output": "",
+                "result": null
+            },
+            "selected": false,
+            "selection_reason": ""
+        },
+        {
+            "request_id": 9,
+            "code_hash": "c484529c",
+            "visible_passed_count": 17,
+            "visible_passed": false,
+            "code": "import logging\nimport datetime\n\nclass AccessGatewayFilter:\n    \"\"\"\n    This class is a filter used for accessing gateway filtering, primarily for authentication and access log recording.\n    \"\"\"\n\n    def __init__(self):\n        self.logger = logging.getLogger(__name__)\n\n    def filter(self, request):\n        \"\"\"\n        Filter the incoming request based on certain rules and conditions.\n        :param request: dict, the incoming request details\n        :return: bool, True if the request is allowed, False otherwise\n        \"\"\"\n        path = request.get('path', '')\n        if self.is_start_with(path):\n            return True\n        user = self.get_jwt_user(request)\n        if user is not None:\n            self.set_current_user_info_and_log(user)\n            return True\n        return False\n\n    def is_start_with(self, request_uri):\n        \"\"\"\n        Check if the request URI starts with certain prefixes.\n        Currently, the prefixes being checked are \"/api\" and \"/login\".\n        :param request_uri: str, the URI of the request\n        :return: bool, True if the URI starts with certain prefixes, False otherwise\n        \"\"\"\n        if not isinstance(request_uri, str):\n            return False\n        return request_uri.startswith('/api') or request_uri.startswith('/login')\n\n    def get_jwt_user(self, request):\n        \"\"\"\n        Get the user information from the JWT token in the request.\n        :param request: dict, the incoming request details\n        :return: dict or None, the user information if the token is valid, None otherwise\n        \"\"\"\n        headers = request.get('headers')\n        if not isinstance(headers, dict):\n            return None\n        auth = headers.get('Authorization')\n        if not isinstance(auth, dict):\n            return None\n        user = auth.get('user')\n        jwt = auth.get('jwt')\n        if user is None or jwt is None:\n            return None\n        expected = str(user.get('name', '')) + str(datetime.date.today())\n        if jwt == expected:\n            return user\n        return None\n\n    def set_current_user_info_and_log(self, user):\n        \"\"\"\n        Set the current user information and log the access.\n        :param user: dict, the user information\n        :return: None\n        \"\"\"\n        if not isinstance(user, dict):\n            return\n        name = user.get('name', '')\n        address = user.get('address', '')\n        self.logger.info('user=%s address=%s time=%s', name, address, datetime.datetime.now())",
+            "eval_result": {
+                "passed": false,
+                "passed_count": 17,
+                "failed_count": 2,
+                "total_count": 19,
+                "passed_tests": [
+                    "builtins.AccessGatewayFilterTest.test_AccessGatewayFilter",
+                    "builtins.AccessGatewayFilterTestFilter.test_filter_1",
+                    "builtins.AccessGatewayFilterTestFilter.test_filter_2",
+                    "builtins.AccessGatewayFilterTestFilter.test_filter_3",
+                    "builtins.AccessGatewayFilterTestFilter.test_filter_4",
+                    "builtins.AccessGatewayFilterTestFilter.test_filter_5",
+                    "builtins.AccessGatewayFilterTestFilter.test_filter_6",
+                    "builtins.AccessGatewayFilterTestGetJwtUser.test_get_jwt_user_1",
+                    "builtins.AccessGatewayFilterTestGetJwtUser.test_get_jwt_user_2",
+                    "builtins.AccessGatewayFilterTestGetJwtUser.test_get_jwt_user_3",
+                    "builtins.AccessGatewayFilterTestGetJwtUser.test_get_jwt_user_4",
+                    "builtins.AccessGatewayFilterTestGetJwtUser.test_get_jwt_user_5",
+                    "builtins.AccessGatewayFilterTestIsStartWith.test_is_start_with_1",
+                    "builtins.AccessGatewayFilterTestIsStartWith.test_is_start_with_2",
+                    "builtins.AccessGatewayFilterTestIsStartWith.test_is_start_with_3",
+                    "builtins.AccessGatewayFilterTestIsStartWith.test_is_start_with_4",
+                    "builtins.AccessGatewayFilterTestIsStartWith.test_is_start_with_5"
+                ],
+                "failed_tests": [
+                    {
+                        "name": "builtins.AccessGatewayFilterTestFilter.test_filter_7",
+                        "type": "Failure",
+                        "details": "Traceback (most recent call last):\n  File \"<string>\", line 123, in test_filter_7\nAssertionError: True is not None\n"
+                    },
+                    {
+                        "name": "builtins.AccessGatewayFilterTestFilter.test_filter_8",
+                        "type": "Failure",
+                        "details": "Traceback (most recent call last):\n  File \"<string>\", line 132, in test_filter_8\nAssertionError: False is not true\n"
+                    }
+                ],
+                "stderr_output": "",
+                "result": null
+            },
+            "selected": false,
+            "selection_reason": ""
+        },
+        {
+            "request_id": 10,
+            "code_hash": "9f7e6b0c",
+            "visible_passed_count": 12,
+            "visible_passed": false,
+            "code": "import logging\nimport datetime\n\nclass AccessGatewayFilter:\n    \"\"\"\n    This class is a filter used for accessing gateway filtering, primarily for authentication and access log recording.\n    \"\"\"\n\n    def __init__(self):\n        self.logger = logging.getLogger(__name__)\n\n    def filter(self, request):\n        \"\"\"\n        Filter the incoming request based on certain rules and conditions.\n        :param request: dict, the incoming request details\n        :return: bool, True if the request is allowed, False otherwise\n        \"\"\"\n        if not isinstance(request, dict):\n            return False\n\n        path = request.get('path', '')\n        if not self.is_start_with(path):\n            return True\n\n        user = self.get_jwt_user(request)\n        if user is not None:\n            self.set_current_user_info_and_log(user)\n            return True\n\n        return False\n\n    def is_start_with(self, request_uri):\n        \"\"\"\n        Check if the request URI starts with certain prefixes.\n        Currently, the prefixes being checked are \"/api\" and \"/login\".\n        :param request_uri: str, the URI of the request\n        :return: bool, True if the URI starts with certain prefixes, False otherwise\n        \"\"\"\n        if not isinstance(request_uri, str):\n            return False\n        return request_uri.startswith('/api') or request_uri.startswith('/login')\n\n    def get_jwt_user(self, request):\n        \"\"\"\n        Get the user information from the JWT token in the request.\n        :param request: dict, the incoming request details\n        :return: dict or None, the user information if the token is valid, None otherwise\n        \"\"\"\n        if not isinstance(request, dict):\n            return None\n\n        headers = request.get('headers')\n        if not isinstance(headers, dict):\n            return None\n\n        auth = headers.get('Authorization')\n        if not isinstance(auth, dict):\n            return None\n\n        user = auth.get('user')\n        jwt = auth.get('jwt')\n\n        if not isinstance(user, dict) or not isinstance(jwt, str):\n            return None\n\n        name = user.get('name')\n        if not isinstance(name, str):\n            return None\n\n        expected = name + str(datetime.date.today())\n        if jwt == expected:\n            return {'user': user}\n\n        return None\n\n    def set_current_user_info_and_log(self, user):\n        \"\"\"\n        Set the current user information and log the access.\n        :param user: dict, the user information\n        :return: None\n        \"\"\"\n        if not isinstance(user, dict):\n            return\n\n        info = user.get('user', user)\n        if not isinstance(info, dict):\n            info = {}\n\n        name = info.get('name', '')\n        address = info.get('address', '')\n        self.logger.info(\"user=%s address=%s time=%s\", name, address, datetime.datetime.now())",
+            "eval_result": {
+                "passed": false,
+                "passed_count": 12,
+                "failed_count": 7,
+                "total_count": 19,
+                "passed_tests": [
+                    "builtins.AccessGatewayFilterTestFilter.test_filter_5",
+                    "builtins.AccessGatewayFilterTestFilter.test_filter_8",
+                    "builtins.AccessGatewayFilterTestGetJwtUser.test_get_jwt_user_1",
+                    "builtins.AccessGatewayFilterTestGetJwtUser.test_get_jwt_user_2",
+                    "builtins.AccessGatewayFilterTestGetJwtUser.test_get_jwt_user_3",
+                    "builtins.AccessGatewayFilterTestGetJwtUser.test_get_jwt_user_4",
+                    "builtins.AccessGatewayFilterTestGetJwtUser.test_get_jwt_user_5",
+                    "builtins.AccessGatewayFilterTestIsStartWith.test_is_start_with_1",
+                    "builtins.AccessGatewayFilterTestIsStartWith.test_is_start_with_2",
+                    "builtins.AccessGatewayFilterTestIsStartWith.test_is_start_with_3",
+                    "builtins.AccessGatewayFilterTestIsStartWith.test_is_start_with_4",
+                    "builtins.AccessGatewayFilterTestIsStartWith.test_is_start_with_5"
+                ],
+                "failed_tests": [
+                    {
+                        "name": "builtins.AccessGatewayFilterTestFilter.test_filter_1",
+                        "type": "Failure",
+                        "details": "Traceback (most recent call last):\n  File \"<string>\", line 100, in test_filter_1\nAssertionError: False is not true\n"
+                    },
+                    {
+                        "name": "builtins.AccessGatewayFilterTestFilter.test_filter_2",
+                        "type": "Failure",
+                        "details": "Traceback (most recent call last):\n  File \"<string>\", line 106, in test_filter_2\nAssertionError: False is not true\n"
+                    },
+                    {
+                        "name": "builtins.AccessGatewayFilterTestFilter.test_filter_3",
+                        "type": "Failure",
+                        "details": "Traceback (most recent call last):\n  File \"<string>\", line 112, in test_filter_3\nAssertionError: False is not true\n"
+                    },
+                    {
+                        "name": "builtins.AccessGatewayFilterTestFilter.test_filter_4",
+                        "type": "Failure",
+                        "details": "Traceback (most recent call last):\n  File \"<string>\", line 118, in test_filter_4\nAssertionError: False is not true\n"
+                    },
+                    {
+                        "name": "builtins.AccessGatewayFilterTestFilter.test_filter_6",
+                        "type": "Failure",
+                        "details": "Traceback (most recent call last):\n  File \"<string>\", line 136, in test_filter_6\nAssertionError: True is not false\n"
+                    },
+                    {
+                        "name": "builtins.AccessGatewayFilterTestFilter.test_filter_7",
+                        "type": "Failure",
+                        "details": "Traceback (most recent call last):\n  File \"<string>\", line 145, in test_filter_7\nAssertionError: True is not None\n"
+                    },
+                    {
+                        "name": "builtins.AccessGatewayFilterTest.test_AccessGatewayFilter",
+                        "type": "Failure",
+                        "details": "Traceback (most recent call last):\n  File \"<string>\", line 231, in test_AccessGatewayFilter\nAssertionError: False is not true\n"
+                    }
+                ],
+                "stderr_output": "",
+                "result": null
+            },
+            "selected": false,
+            "selection_reason": ""
+        },
+        {
+            "request_id": 11,
+            "code_hash": "a926be7e",
+            "visible_passed_count": 12,
+            "visible_passed": false,
+            "code": "import logging\nimport datetime\n\nclass AccessGatewayFilter:\n    \"\"\"\n    This class is a filter used for accessing gateway filtering, primarily for authentication and access log recording.\n    \"\"\"\n\n    def __init__(self):\n        self.logger = logging.getLogger(__name__)\n\n    def filter(self, request):\n        \"\"\"\n        Filter the incoming request based on certain rules and conditions.\n        :param request: dict, the incoming request details\n        :return: bool, True if the request is allowed, False otherwise\n        \"\"\"\n        if not isinstance(request, dict):\n            return False\n\n        path = request.get('path', '')\n        if not isinstance(path, str):\n            return False\n\n        if not self.is_start_with(path):\n            return True\n\n        user = self.get_jwt_user(request)\n        if user is None:\n            return False\n\n        self.set_current_user_info_and_log(user)\n        return True\n\n    def is_start_with(self, request_uri):\n        \"\"\"\n        Check if the request URI starts with certain prefixes.\n        Currently, the prefixes being checked are \"/api\" and \"/login\".\n        :param request_uri: str, the URI of the request\n        :return: bool, True if the URI starts with certain prefixes, False otherwise\n        \"\"\"\n        if not isinstance(request_uri, str):\n            return False\n        return request_uri.startswith('/api') or request_uri.startswith('/login')\n\n    def get_jwt_user(self, request):\n        \"\"\"\n        Get the user information from the JWT token in the request.\n        :param request: dict, the incoming request details\n        :return: dict or None, the user information if the token is valid, None otherwise\n        \"\"\"\n        if not isinstance(request, dict):\n            return None\n\n        headers = request.get('headers')\n        if not isinstance(headers, dict):\n            return None\n\n        authorization = headers.get('Authorization')\n        if not isinstance(authorization, dict):\n            return None\n\n        user = authorization.get('user')\n        jwt = authorization.get('jwt')\n\n        if not isinstance(user, dict) or not isinstance(jwt, str):\n            return None\n\n        name = user.get('name')\n        if not isinstance(name, str):\n            return None\n\n        expected_jwt = name + str(datetime.date.today())\n        if jwt != expected_jwt:\n            return None\n\n        return user\n\n    def set_current_user_info_and_log(self, user):\n        \"\"\"\n        Set the current user information and log the access.\n        :param user: dict, the user information\n        :return: None\n        \"\"\"\n        if not isinstance(user, dict):\n            return\n\n        name = user.get('name', '')\n        address = user.get('address', '')\n        self.logger.info(\"user=%s address=%s time=%s\", name, address, datetime.datetime.now())",
+            "eval_result": {
+                "passed": false,
+                "passed_count": 12,
+                "failed_count": 7,
+                "total_count": 19,
+                "passed_tests": [
+                    "builtins.AccessGatewayFilterTestFilter.test_filter_5",
+                    "builtins.AccessGatewayFilterTestFilter.test_filter_8",
+                    "builtins.AccessGatewayFilterTestGetJwtUser.test_get_jwt_user_1",
+                    "builtins.AccessGatewayFilterTestGetJwtUser.test_get_jwt_user_2",
+                    "builtins.AccessGatewayFilterTestGetJwtUser.test_get_jwt_user_3",
+                    "builtins.AccessGatewayFilterTestGetJwtUser.test_get_jwt_user_4",
+                    "builtins.AccessGatewayFilterTestGetJwtUser.test_get_jwt_user_5",
+                    "builtins.AccessGatewayFilterTestIsStartWith.test_is_start_with_1",
+                    "builtins.AccessGatewayFilterTestIsStartWith.test_is_start_with_2",
+                    "builtins.AccessGatewayFilterTestIsStartWith.test_is_start_with_3",
+                    "builtins.AccessGatewayFilterTestIsStartWith.test_is_start_with_4",
+                    "builtins.AccessGatewayFilterTestIsStartWith.test_is_start_with_5"
+                ],
+                "failed_tests": [
+                    {
+                        "name": "builtins.AccessGatewayFilterTestFilter.test_filter_1",
+                        "type": "Failure",
+                        "details": "Traceback (most recent call last):\n  File \"<string>\", line 99, in test_filter_1\nAssertionError: False is not true\n"
+                    },
+                    {
+                        "name": "builtins.AccessGatewayFilterTestFilter.test_filter_2",
+                        "type": "Failure",
+                        "details": "Traceback (most recent call last):\n  File \"<string>\", line 105, in test_filter_2\nAssertionError: False is not true\n"
+                    },
+                    {
+                        "name": "builtins.AccessGatewayFilterTestFilter.test_filter_3",
+                        "type": "Failure",
+                        "details": "Traceback (most recent call last):\n  File \"<string>\", line 111, in test_filter_3\nAssertionError: False is not true\n"
+                    },
+                    {
+                        "name": "builtins.AccessGatewayFilterTestFilter.test_filter_4",
+                        "type": "Failure",
+                        "details": "Traceback (most recent call last):\n  File \"<string>\", line 117, in test_filter_4\nAssertionError: False is not true\n"
+                    },
+                    {
+                        "name": "builtins.AccessGatewayFilterTestFilter.test_filter_6",
+                        "type": "Failure",
+                        "details": "Traceback (most recent call last):\n  File \"<string>\", line 135, in test_filter_6\nAssertionError: True is not false\n"
+                    },
+                    {
+                        "name": "builtins.AccessGatewayFilterTestFilter.test_filter_7",
+                        "type": "Failure",
+                        "details": "Traceback (most recent call last):\n  File \"<string>\", line 144, in test_filter_7\nAssertionError: True is not None\n"
+                    },
+                    {
+                        "name": "builtins.AccessGatewayFilterTest.test_AccessGatewayFilter",
+                        "type": "Failure",
+                        "details": "Traceback (most recent call last):\n  File \"<string>\", line 230, in test_AccessGatewayFilter\nAssertionError: False is not true\n"
+                    }
+                ],
+                "stderr_output": "",
+                "result": null
+            },
+            "selected": false,
+            "selection_reason": ""
+        }
+    ],
+    "selection_rule": "highest_visible_pass_count; tie -> earliest_generated",
+    "evaluation_scope": "visible_tests_only",
+    "final_code_hash": "dfe0db4b",
+    "stopped_reason": "Budget insufficient before resample request"
+}

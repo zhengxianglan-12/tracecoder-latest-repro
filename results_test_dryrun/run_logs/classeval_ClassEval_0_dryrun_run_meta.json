@@ -3,8 +3,9 @@
     "dataset": "classeval",
     "task_id": "ClassEval_0",
     "model": "fake-model",
-    "git_commit": "d54f37b09bfebcdf8f1b1b195d2466bbfea4cf0f",
+    "git_commit": "86bf80994edbfa6e50ae3d8757a491f66b19831a",
     "git_dirty": true,
+    "repo_dirty": true,
     "code_dirty": false,
     "code_dependency_files": [
         "problem_processor.py",
@@ -57,5 +58,6 @@
             "stop_when_visible_passed": false,
             "remaining_budget_after": 13500
         }
-    }
+    },
+    "output_files_changed": []
 }

@@ -1,0 +1,187 @@
+===== ClassEval_0 等预算对照 =====
+run_time: 20261024_195507
+dataset: classeval
+task_id: ClassEval_0
+model: deepseek-chat
+budget_total: 15000
+output_reserve: 2000
+stop_when_visible_passed: False
+no_instrumentation: False
+selection_rule: highest_visible_pass_count; tie -> earliest_generated
+evaluation_scope: visible_tests_only
+
+===== TraceCoder 组开始：ClassEval_0 =====
+TraceCoder 用时: 39.14s
+TraceCoder final_passed: False
+TraceCoder stopped_reason: Budget insufficient before instrumentation request
+TraceCoder total_prompt_tokens: 7467
+TraceCoder total_completion_tokens: 4234
+TraceCoder final_code_hash: 289c55c6
+===== TraceCoder 最终代码 =====
+import logging
+import datetime
+
+class AccessGatewayFilter:
+    """
+    This class is a filter used for accessing gateway filtering, primarily for authentication and access log recording.
+    """
+
+    def __init__(self):
+        self.logger = logging.getLogger(__name__)
+        self.current_user = None
+
+    def filter(self, request):
+        """
+        Filter the incoming request based on certain rules and conditions.
+        :param request: dict, the incoming request details
+        :return: bool, True if the request is allowed, False otherwise
+        """
+        path = request.get('path', '') if isinstance(request, dict) else ''
+        if not self.is_start_with(path):
+            return True
+
+        user = self.get_jwt_user(request)
+        if user is not None:
+            self.set_current_user_info_and_log(user)
+            return True
+
+        if path.startswith('/login'):
+            return True
+
+        return False
+
+    def is_start_with(self, request_uri):
+        """
+        Check if the request URI starts with certain prefixes.
+        Currently, the prefixes being checked are "/api" and "/login".
+        :param request_uri: str, the URI of the request
+        :return: bool, True if the URI starts with certain prefixes, False otherwise
+        """
+        if not isinstance(request_uri, str):
+            return False
+        return request_uri.startswith('/api') or request_uri.startswith('/login')
+
+    def get_jwt_user(self, request):
+        """
+        Get the user information from the JWT token in the request.
+        :param request: dict, the incoming request details
+        :return: dict or None, the user information if the token is valid, None otherwise
+        """
+        if not isinstance(request, dict):
+            return None
+        headers = request.get('headers')
+        if not isinstance(headers, dict):
+            return None
+        auth = headers.get('Authorization')
+        if not isinstance(auth, dict):
+            return None
+        user = auth.get('user')
+        jwt = auth.get('jwt')
+        if user is None or jwt is None:
+            return None
+        expected = str(user.get('name', '')) + str(datetime.date.today())
+        if jwt == expected:
+            return user
+        return None
+
+    def set_current_user_info_and_log(self, user):
+        """
+        Set the current user information and log the access.
+        :param user: dict, the user information
+        :return: None
+        """
+        self.current_user = user
+        if isinstance(user, dict):
+            name = user.get('name', '')
+            address = user.get('address', '')
+        else:
+            name = ''
+            address = ''
+        self.logger.info("user=%s address=%s time=%s", name, address, datetime.datetime.now())
+========================
+
+===== Independent Resample 组开始 =====
+Resample 用时: 128.20s
+Resample num_requests: 11
+Resample stopped_reason: Budget insufficient before resample request
+Resample prompt_tokens: 6226
+Resample completion_tokens: 6284
+Resample final_visible_passed_count: 17
+Resample final_code_hash: dfe0db4b
+===== Resample 最终代码 =====
+import logging
+import datetime
+
+class AccessGatewayFilter:
+    """
+    This class is a filter used for accessing gateway filtering, primarily for authentication and access log recording.
+    """
+
+    def __init__(self):
+        self.logger = logging.getLogger(__name__)
+        self.current_user_info = None
+
+    def filter(self, request):
+        """
+        Filter the incoming request based on certain rules and conditions.
+        :param request: dict, the incoming request details
+        :return: bool, True if the request is allowed, False otherwise
+        """
+        path = request.get('path', '')
+        if self.is_start_with(path):
+            return True
+        user = self.get_jwt_user(request)
+        if user is not None:
+            self.set_current_user_info_and_log(user)
+            return True
+        return False
+
+    def is_start_with(self, request_uri):
+        """
+        Check if the request URI starts with certain prefixes.
+        :param request_uri: str, the URI of the request
+        :return: bool, True if the URI starts with certain prefixes, False otherwise
+        """
+        if not isinstance(request_uri, str):
+            return False
+        return request_uri.startswith('/api') or request_uri.startswith('/login')
+
+    def get_jwt_user(self, request):
+        """
+        Get the user information from the JWT token in the request.
+        :param request: dict, the incoming request details
+        :return: dict or None, the user information if the token is valid, None otherwise
+        """
+        headers = request.get('headers') if isinstance(request, dict) else None
+        if not isinstance(headers, dict):
+            return None
+        auth = headers.get('Authorization')
+        if not isinstance(auth, dict):
+            return None
+        user = auth.get('user')
+        jwt = auth.get('jwt')
+        if user is None or jwt is None:
+            return None
+        name = user.get('name') if isinstance(user, dict) else None
+        if name is None:
+            return None
+        expected = str(name) + str(datetime.date.today())
+        if jwt == expected:
+            return user
+        return None
+
+    def set_current_user_info_and_log(self, user):
+        """
+        Set the current user information and log the access.
+        :param user: dict, the user information
+        :return: None
+        """
+        self.current_user_info = user
+        if isinstance(user, dict):
+            name = user.get('name', '')
+            address = user.get('address', '')
+        else:
+            name = ''
+            address = ''
+        self.logger.info("user=%s address=%s time=%s", name, address, datetime.datetime.now())
+========================
