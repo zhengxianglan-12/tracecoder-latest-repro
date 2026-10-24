@@ -1,2 +1,0 @@
-[OK] 本次运行日志将自动保存至: results/run_logs/terminal_output_20261023_122136.txt
-[OK] 运行元数据已成功保存至: results/run_logs/run_meta_classeval_deepseek-chat_20261023_122136.json

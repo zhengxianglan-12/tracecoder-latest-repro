@@ -107,6 +107,21 @@ def _code_dirty():
     return False
 
 
+def _compute_output_files_changed(results_dir="results"):
+    """记录当前 results 目录下文件的 mtime，用于运行前后对比输出变动清单。"""
+    existing = {}
+    if not os.path.isdir(results_dir):
+        return existing
+    for root, _, files in os.walk(results_dir):
+        for name in files:
+            full = os.path.join(root, name)
+            try:
+                existing[full] = os.path.getmtime(full)
+            except OSError:
+                pass
+    return existing
+
+
 def _write_json(path, obj):
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, "w", encoding="utf-8") as f:
@@ -219,8 +234,11 @@ def write_outputs(task_id, safe_task, run_time, cli,
         "task_id": task_id,
         "model": cli.model,
         "git_commit": _git_commit(),
-        "git_dirty": _git_dirty(),      # 全库原义，结果文件也算
-        "code_dirty": _code_dirty(),    # 只对执行依赖文件判断
+        # 全库状态：保留原义；repo_dirty 与 git_dirty 同义
+        "git_dirty": _git_dirty(),
+        "repo_dirty": _git_dirty(),
+        # 执行依赖状态：只对 CODE_DEPENDENCY_FILES 判断
+        "code_dirty": _code_dirty(),
         "code_dependency_files": CODE_DEPENDENCY_FILES,
         "budget_total": cli.budget_total,
         "output_reserve": cli.output_reserve,
@@ -263,6 +281,8 @@ def write_outputs(task_id, safe_task, run_time, cli,
                 "remaining_budget_after": args_resample.remaining_budget,
             },
         },
+        # 输出文件变动清单：运行结束后回填
+        "output_files_changed": [],
     }
     _write_json(f"{results_dir}/run_logs/{prefix}_run_meta.json", run_meta)
 
@@ -402,6 +422,9 @@ def main():
     problem_data = datasets[task_id]
     safe_task = task_id.replace("/", "_")
 
+    # 运行前 results 快照，用于运行后算输出文件变动清单
+    output_snapshot_before = _compute_output_files_changed("results")
+
     log_lines = [
         f"===== {task_id} 等预算对照 =====",
         f"run_time: {run_time}", f"dataset: {cli.dataset}", f"task_id: {task_id}",
@@ -438,6 +461,24 @@ def main():
     summary_rows = write_outputs(task_id, safe_task, run_time, cli,
                                  trace_res, resample_res,
                                  args_trace, args_resample, log_lines)
+
+    # 运行后对比快照，回填 output_files_changed
+    prefix = f"{cli.dataset}_{safe_task}_{run_time}"
+    meta_path = f"results/run_logs/{prefix}_run_meta.json"
+    snapshot_after = _compute_output_files_changed("results")
+    changed = [
+        p for p, m in snapshot_after.items()
+        if p not in output_snapshot_before or output_snapshot_before[p] != m
+    ]
+    try:
+        with open(meta_path, "r", encoding="utf-8") as f:
+            meta = json.load(f)
+        meta["output_files_changed"] = sorted(changed)
+        with open(meta_path, "w", encoding="utf-8") as f:
+            json.dump(meta, f, indent=4, ensure_ascii=False)
+        print(f"[OK] output_files_changed 已回填至: {meta_path}（{len(changed)} 个文件）")
+    except Exception as e:
+        print(f"[WARN] 回填 output_files_changed 失败: {e}")
 
     print("\n========== 对照汇总 ==========")
     for row in summary_rows:
