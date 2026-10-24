@@ -5,15 +5,13 @@
 #   python run_comparison.py --start-index 0 --budget-total 15000 --model deepseek-chat
 #   python run_comparison.py --task-id ClassEval_23 --budget-total 15000 --model deepseek-chat
 #
-# 输出（均带 task_id，不会互相覆盖）：
-#   results/run_logs/run_meta_<task>_<model>_<ts>_tracecoder.json
-#   results/run_logs/run_meta_<task>_<model>_<ts>_resample.json
-#   results/run_logs/terminal_output_<task>_<ts>_tracecoder.txt
-#   results/run_logs/terminal_output_<task>_<ts>_combined.txt
-#   results/tables/tracecoder_requests_<task>_<ts>.csv
-#   results/tables/resample_requests_<task>_<ts>.csv
-#   results/tables/comparison_<task>_summary_<ts>.csv
-#   results/tables/comparison_<task>_summary.csv
+# 输出（均带 dataset_task_ts 前缀，不会互相覆盖）：
+#   results/run_logs/<prefix>_run_meta.json
+#   results/run_logs/<prefix>_debug_session_log_tracecoder.json
+#   results/run_logs/<prefix>_candidates_resample.json
+#   results/run_logs/<prefix>_terminal_output.txt
+#   results/tables/<prefix>_requests.csv
+#   results/tables/<prefix>_summary.csv
 
 import os
 import sys
@@ -68,11 +66,45 @@ def _git_commit():
 
 
 def _git_dirty():
+    """全库是否有未提交改动（保留原义，结果文件也算）。"""
     try:
         out = subprocess.check_output(["git", "status", "--porcelain"], text=True).strip()
         return len(out) > 0
     except Exception:
         return True
+
+
+# 实际执行依赖清单：只对这些文件判断 code_dirty
+CODE_DEPENDENCY_FILES = [
+    "problem_processor.py",
+    "independent_resample.py",
+    "run_comparison.py",
+    "config.py",
+    "src/generation.py",
+    "src/traceRunner.py",
+    "src/dataset_loader.py",
+    "src/postprocessing.py",
+    "datasets/ClassEval/evaluation.py",
+]
+
+
+def _code_dirty():
+    """只对执行依赖文件判断是否脏（工作区/暂存区/未跟踪）。"""
+    try:
+        out = subprocess.check_output(["git", "status", "--porcelain"], text=True).strip()
+    except Exception:
+        return True
+    if not out:
+        return False
+    deps = {f.replace("\\", "/") for f in CODE_DEPENDENCY_FILES}
+    for line in out.splitlines():
+        if not line.strip():
+            continue
+        # porcelain 格式：XY path
+        path = line[3:].strip().strip('"').replace("\\", "/")
+        if path in deps:
+            return True
+    return False
 
 
 def _write_json(path, obj):
@@ -166,15 +198,13 @@ def run_resample(problem_data, args, check_correctness_func, log_lines,
 
 
 # ============================================================
-# 写输出
-# ============================================================
-# ============================================================
-# 写输出（5 文件方案）
-#   <dataset>_<task>_<ts>_run_meta.json
-#   <dataset>_<task>_<ts>_trace.json
-#   <dataset>_<task>_<ts>_terminal_output.txt
-#   <dataset>_<task>_<ts>_requests.csv
-#   <dataset>_<task>_<ts>_summary.csv
+# 写输出（6 文件方案）
+#   <prefix>_run_meta.json
+#   <prefix>_debug_session_log_tracecoder.json
+#   <prefix>_candidates_resample.json
+#   <prefix>_terminal_output.txt
+#   <prefix>_requests.csv
+#   <prefix>_summary.csv
 # ============================================================
 def write_outputs(task_id, safe_task, run_time, cli,
                   trace_res, resample_res,
@@ -182,15 +212,16 @@ def write_outputs(task_id, safe_task, run_time, cli,
                   log_lines, results_dir="results"):
     prefix = f"{cli.dataset}_{safe_task}_{run_time}"
 
-    # ---------- 1. run_meta（公共字段 + methods 子字典） ----------
+    # ---------- 1. run_meta ----------
     run_meta = {
         "run_timestamp": run_time,
         "dataset": cli.dataset,
         "task_id": task_id,
         "model": cli.model,
         "git_commit": _git_commit(),
-        "git_dirty": _git_dirty(),
-        "code_dirty": _git_dirty(),
+        "git_dirty": _git_dirty(),      # 全库原义，结果文件也算
+        "code_dirty": _code_dirty(),    # 只对执行依赖文件判断
+        "code_dependency_files": CODE_DEPENDENCY_FILES,
         "budget_total": cli.budget_total,
         "output_reserve": cli.output_reserve,
         "selection_rule": SELECTION_RULE,
@@ -235,7 +266,7 @@ def write_outputs(task_id, safe_task, run_time, cli,
     }
     _write_json(f"{results_dir}/run_logs/{prefix}_run_meta.json", run_meta)
 
-    # ---------- 2a. TraceCoder 逐轮状态（单独文件） ----------
+    # ---------- 2a. TraceCoder 逐轮状态 ----------
     tracecoder_debug = {
         "dataset": cli.dataset,
         "task_id": task_id,
@@ -252,7 +283,7 @@ def write_outputs(task_id, safe_task, run_time, cli,
         tracecoder_debug,
     )
 
-    # ---------- 2b. Resample 逐候选（单独文件） ----------
+    # ---------- 2b. Resample 逐候选 ----------
     resample_candidates = {
         "dataset": cli.dataset,
         "task_id": task_id,
@@ -269,11 +300,11 @@ def write_outputs(task_id, safe_task, run_time, cli,
         resample_candidates,
     )
 
-    # ---------- 3. terminal_output（两组合并日志） ----------
+    # ---------- 3. terminal_output ----------
     _write_text(f"{results_dir}/run_logs/{prefix}_terminal_output.txt",
                 "\n".join(log_lines))
 
-    # ---------- 4. requests（两组合并，method 区分） ----------
+    # ---------- 4. requests ----------
     trace_requests = []
     for r in trace_res.get("request_log", []) or []:
         trace_requests.append({
@@ -304,7 +335,7 @@ def write_outputs(task_id, safe_task, run_time, cli,
     _write_csv(f"{results_dir}/tables/{prefix}_requests.csv",
                all_requests, req_headers)
 
-    # ---------- 5. summary（两组横向对比） ----------
+    # ---------- 5. summary ----------
     summary_rows = [
         {
             "task_id": task_id, "method": "tracecoder",
