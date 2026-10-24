@@ -83,15 +83,14 @@ def main():
     assert summary_rows[0]["method"] == "tracecoder"
     assert summary_rows[1]["method"] == "independent_resample"
 
+    prefix = f"classeval_{safe_task}_dryrun"
     expected = [
-        f"{test_results_dir}/run_logs/run_meta_{safe_task}_fake-model_dryrun_tracecoder.json",
-        f"{test_results_dir}/run_logs/run_meta_{safe_task}_fake-model_dryrun_resample.json",
-        f"{test_results_dir}/run_logs/terminal_output_{safe_task}_dryrun_tracecoder.txt",
-        f"{test_results_dir}/run_logs/terminal_output_{safe_task}_dryrun_combined.txt",
-        f"{test_results_dir}/tables/tracecoder_requests_{safe_task}_dryrun.csv",
-        f"{test_results_dir}/tables/resample_requests_{safe_task}_dryrun.csv",
-        f"{test_results_dir}/tables/comparison_{safe_task}_summary_dryrun.csv",
-        f"{test_results_dir}/tables/comparison_{safe_task}_summary.csv",
+        f"{test_results_dir}/run_logs/{prefix}_run_meta.json",
+        f"{test_results_dir}/run_logs/{prefix}_debug_session_log_tracecoder.json",
+        f"{test_results_dir}/run_logs/{prefix}_candidates_resample.json",
+        f"{test_results_dir}/run_logs/{prefix}_terminal_output.txt",
+        f"{test_results_dir}/tables/{prefix}_requests.csv",
+        f"{test_results_dir}/tables/{prefix}_summary.csv",
     ]
     for p in expected:
         assert os.path.exists(p), f"缺少输出文件: {p}"

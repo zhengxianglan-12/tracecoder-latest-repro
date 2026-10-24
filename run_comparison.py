@@ -235,21 +235,39 @@ def write_outputs(task_id, safe_task, run_time, cli,
     }
     _write_json(f"{results_dir}/run_logs/{prefix}_run_meta.json", run_meta)
 
-    # ---------- 2. trace（TraceCoder 逐轮 + Resample 逐候选） ----------
-    trace = {
+    # ---------- 2a. TraceCoder 逐轮状态（单独文件） ----------
+    tracecoder_debug = {
         "dataset": cli.dataset,
         "task_id": task_id,
         "run_timestamp": run_time,
-        "tracecoder": {
-            "debug_session_log": trace_res.get("debug_session_log", []),
-        },
-        "independent_resample": {
-            "candidates": resample_res.get("candidates", []),
-            "selection_rule": resample_res.get("selection_rule"),
-            "evaluation_scope": resample_res.get("evaluation_scope"),
-        },
+        "method": "tracecoder",
+        "debug_session_log": trace_res.get("debug_session_log", []),
+        "final_best_attempt": trace_res.get("final_best_attempt"),
+        "final_best_source": trace_res.get("final_best_source"),
+        "final_code_hash": _get_hash(trace_res.get("final_code", "")),
+        "stopped_reason": trace_res.get("stopped_reason"),
     }
-    _write_json(f"{results_dir}/run_logs/{prefix}_trace.json", trace)
+    _write_json(
+        f"{results_dir}/run_logs/{prefix}_debug_session_log_tracecoder.json",
+        tracecoder_debug,
+    )
+
+    # ---------- 2b. Resample 逐候选（单独文件） ----------
+    resample_candidates = {
+        "dataset": cli.dataset,
+        "task_id": task_id,
+        "run_timestamp": run_time,
+        "method": "independent_resample",
+        "candidates": resample_res.get("candidates", []),
+        "selection_rule": resample_res.get("selection_rule"),
+        "evaluation_scope": resample_res.get("evaluation_scope"),
+        "final_code_hash": resample_res.get("final_code_hash"),
+        "stopped_reason": resample_res.get("stopped_reason"),
+    }
+    _write_json(
+        f"{results_dir}/run_logs/{prefix}_candidates_resample.json",
+        resample_candidates,
+    )
 
     # ---------- 3. terminal_output（两组合并日志） ----------
     _write_text(f"{results_dir}/run_logs/{prefix}_terminal_output.txt",

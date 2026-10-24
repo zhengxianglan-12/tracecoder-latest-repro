@@ -373,6 +373,7 @@ def _run_self_debugging(initial_code, initial_eval, problem_data, args, check_co
     """Executes the second phase: self-debugging loop (updated to include complete logic)."""
     code_to_debug, last_eval, best_code, best_eval = initial_code, initial_eval, initial_code, initial_eval
     log, history, p_tokens, c_tokens, streak = [], [], 0, 0, 0
+    best_attempt = 0   # 0 表示最终代码来自初始生成
     request_log = []
     instrumentation_suggestions = ""
 
@@ -389,6 +390,8 @@ def _run_self_debugging(initial_code, initial_eval, problem_data, args, check_co
         # 记录本轮起点，用于计算本轮增量（cost = 本轮增量；cost_cumulative = 累计）
         p_tokens_at_attempt_start = p_tokens
         c_tokens_at_attempt_start = c_tokens
+        # 记录本轮开始时实际使用的输入代码（进入本轮的输入）
+        input_code_at_attempt_start = code_to_debug
 
         # 1. Instrumentation
         captured_prints = "Instrumentation skipped or not applicable."
@@ -412,6 +415,8 @@ def _run_self_debugging(initial_code, initial_eval, problem_data, args, check_co
                     })
                     log.append({
                         "attempt": attempt,
+                        "input_code": input_code_at_attempt_start,
+                        "input_code_hash": get_hash(input_code_at_attempt_start),
                         "status": "budget_exhausted",
                         "plan": None,
                         "eval_result": {"passed": False, "passed_count": 0, "total_count": 0},
@@ -436,6 +441,8 @@ def _run_self_debugging(initial_code, initial_eval, problem_data, args, check_co
                 usage_unverifiable_flag = True
                 log.append({
                     "attempt": attempt,
+                    "input_code": input_code_at_attempt_start,
+                    "input_code_hash": get_hash(input_code_at_attempt_start),
                     "status": "usage_unverifiable",
                     "plan": None,
                     "eval_result": {"passed": False, "passed_count": 0, "total_count": 0},
@@ -476,6 +483,8 @@ def _run_self_debugging(initial_code, initial_eval, problem_data, args, check_co
                 log.append({
                     "attempt": attempt,
                     "status": "budget_exhausted",
+                    "input_code": input_code_at_attempt_start,
+                    "input_code_hash": get_hash(input_code_at_attempt_start),
                     "plan": None,
                     "eval_result": {"passed": False, "passed_count": 0, "total_count": 0},
                     "candidate_code_hash": "empty",
@@ -500,6 +509,8 @@ def _run_self_debugging(initial_code, initial_eval, problem_data, args, check_co
             log.append({
                 "attempt": attempt,
                 "status": "usage_unverifiable",
+                "input_code": input_code_at_attempt_start,
+                "input_code_hash": get_hash(input_code_at_attempt_start),
                 "plan": None,
                 "eval_result": {"passed": False, "passed_count": 0, "total_count": 0},
                 "candidate_code_hash": "empty",
@@ -529,6 +540,8 @@ def _run_self_debugging(initial_code, initial_eval, problem_data, args, check_co
         if not (repair_plan and repair_plan.strip()):
             attempt_log = {
                 "attempt": attempt, "plan": repair_plan,
+                "input_code": input_code_at_attempt_start,
+                "input_code_hash": get_hash(input_code_at_attempt_start),
                 "eval_result": {"passed": False, "passed_count": 0, "total_count": 0},
                 "status": "no_plan", "candidate_code_hash": "empty",
                 "next_input_intended": get_hash(code_to_debug), "next_input_actual": None,
@@ -557,6 +570,8 @@ def _run_self_debugging(initial_code, initial_eval, problem_data, args, check_co
                 log.append({
                     "attempt": attempt,
                     "status": "budget_exhausted",
+                    "input_code": input_code_at_attempt_start,
+                    "input_code_hash": get_hash(input_code_at_attempt_start),
                     "plan": None,
                     "eval_result": {"passed": False, "passed_count": 0, "total_count": 0},
                     "candidate_code_hash": "empty",
@@ -582,6 +597,8 @@ def _run_self_debugging(initial_code, initial_eval, problem_data, args, check_co
                 "attempt": attempt,
                 "status": "usage_unverifiable",
                 "plan": None,
+                "input_code": input_code_at_attempt_start,
+                "input_code_hash": get_hash(input_code_at_attempt_start),
                 "eval_result": {"passed": False, "passed_count": 0, "total_count": 0},
                 "candidate_code_hash": "empty",
                 "next_input_intended": get_hash(code_to_debug),
@@ -608,6 +625,8 @@ def _run_self_debugging(initial_code, initial_eval, problem_data, args, check_co
         if not candidate_code.strip():
             attempt_log = {
                 "attempt": attempt, "plan": repair_plan,
+                "input_code": input_code_at_attempt_start,
+                "input_code_hash": get_hash(input_code_at_attempt_start),
                 "eval_result": {"passed": False, "passed_count": 0, "total_count": 0},
                 "status": "empty_code", "candidate_code_hash": "empty",
                 "next_input_intended": get_hash(code_to_debug), "next_input_actual": None,
@@ -636,12 +655,16 @@ def _run_self_debugging(initial_code, initial_eval, problem_data, args, check_co
         if eval_candidate.get('passed'):
             status = "passed"
             best_code, best_eval = candidate_code, eval_candidate
+            best_attempt = attempt
             code_to_debug = candidate_code
             logging.info(f"🎯 [第 {attempt} 轮] 全部通过！状态：passed | 候选代码Hash: {get_hash(candidate_code)}")
             logging.info(f"===== 成功候选代码本体 =====\n{candidate_code}\n========================")
 
             attempt_log = {
-                "attempt": attempt, "plan": repair_plan, "eval_result": eval_candidate,
+                "attempt": attempt, "plan": repair_plan,
+                "input_code": input_code_at_attempt_start,
+                "input_code_hash": get_hash(input_code_at_attempt_start), 
+                "eval_result": eval_candidate,
                 "status": status, "candidate_code_hash": get_hash(candidate_code),
                 "next_input_intended": get_hash(code_to_debug), "next_input_actual": None,
                 "best_code_hash": get_hash(best_code),
@@ -660,6 +683,7 @@ def _run_self_debugging(initial_code, initial_eval, problem_data, args, check_co
         if curr_score > best_score:
             status = "improve"
             best_code, best_eval, code_to_debug, last_eval, streak = candidate_code, eval_candidate, candidate_code, eval_candidate, 0
+            best_attempt = attempt
             logging.info(f"📈 [第 {attempt} 轮] 改进！状态：improve | 候选Hash: {get_hash(candidate_code)} | 历史最优分: {curr_score}")
             logging.info(f"===== 候选代码本体 =====\n{candidate_code}\n========================")
         elif curr_score == best_score:
@@ -681,7 +705,10 @@ def _run_self_debugging(initial_code, initial_eval, problem_data, args, check_co
         will_continue = (attempt < args.max_debug_attempts) and (streak < args.max_no_improvement_streak)
 
         attempt_log = {
-            "attempt": attempt, "plan": repair_plan, "eval_result": eval_candidate,
+            "attempt": attempt, "plan": repair_plan,
+            "input_code": input_code_at_attempt_start,
+            "input_code_hash": get_hash(input_code_at_attempt_start),
+            "eval_result": eval_candidate,
             "status": status, "candidate_code_hash": get_hash(candidate_code),
             "next_input_intended": get_hash(code_to_debug),
             "next_input_actual": get_hash(code_to_debug) if will_continue else None,
@@ -710,6 +737,10 @@ def _run_self_debugging(initial_code, initial_eval, problem_data, args, check_co
         "budget_exhausted": budget_exhausted,
         "budget_remaining": getattr(args, "remaining_budget", None),
         "usage_unverifiable": usage_unverifiable_flag,
+        "final_best_attempt": best_attempt,
+        "final_best_source": (
+            "initial_generation" if best_attempt == 0 else f"attempt_{best_attempt}"
+        ),
     }
 
 # The `process_problem` function remains unchanged as it only calls the core functions above
@@ -800,6 +831,8 @@ def process_problem(problem_data, task_id, args, check_correctness_func_param: C
             "final_code": debug_res["final_code"], "final_eval": debug_res["final_eval"],
             "final_passed": debug_res["final_eval"].get("passed", False),
             "debug_session_log": session_log, "stopped_reason": last_stopped_reason,
+            "final_best_attempt": debug_res.get("final_best_attempt", 0),
+            "final_best_source": debug_res.get("final_best_source", "initial_generation"),
             "budget_exhausted": debug_res.get("budget_exhausted", False),
             "budget_remaining": debug_res.get("budget_remaining"),
             "usage_unverifiable": debug_res.get("usage_unverifiable", False),

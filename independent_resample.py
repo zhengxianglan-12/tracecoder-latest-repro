@@ -134,21 +134,30 @@ def _run_independent_resample(problem_data, args, check_correctness_func,
         final_eval = {"passed": False, "passed_count": 0, "failed_count": 0,
                       "total_count": 0, "passed_tests": [], "failed_tests": []}
 
+    # 9) 逐候选完整记录：代码全文、完整评测、是否选中、选择理由
+    candidates_out = []
+    for c in candidates:
+        is_selected = (best is not None and c["request_id"] == best["request_id"])
+        candidates_out.append({
+            "request_id": c["request_id"],
+            "code_hash": c["code_hash"],
+            "visible_passed_count": c["visible_eval"].get("passed_count", 0),
+            "visible_passed": c["visible_eval"].get("passed", False),
+            "code": c["code"],
+            "eval_result": c["visible_eval"],
+            "selected": is_selected,
+            "selection_reason": (
+                SELECTION_RULE if is_selected else ""
+            ),
+        })
+
     return {
         "method": "independent_resample",
         "final_code": best["code"] if best else "",
         "final_code_hash": best["code_hash"] if best else "empty",
         "final_eval": final_eval,
         "final_visible_passed_count": final_eval.get("passed_count", 0),
-        "candidates": [
-            {
-                "request_id": c["request_id"],
-                "code_hash": c["code_hash"],
-                "visible_passed_count": c["visible_eval"].get("passed_count", 0),
-                "visible_passed": c["visible_eval"].get("passed", False),
-            }
-            for c in candidates
-        ],
+        "candidates": candidates_out,
         "requests": requests,
         "num_requests": len(requests),
         "stopped_reason": stopped_reason,
