@@ -1,0 +1,70 @@
+{
+    "run_timestamp": "dryrun",
+    "dataset": "classeval",
+    "task_id": "ClassEval_0",
+    "model": "fake-model",
+    "git_commit": "caa78fdb036eb7499819fd102a6810548995bee1",
+    "git_dirty": true,
+    "repo_dirty": true,
+    "code_dirty": false,
+    "code_dependency_files": [
+        "problem_processor.py",
+        "independent_resample.py",
+        "run_comparison.py",
+        "config.py",
+        "src/generation.py",
+        "src/traceRunner.py",
+        "src/dataset_loader.py",
+        "src/postprocessing.py",
+        "datasets/ClassEval/evaluation.py"
+    ],
+    "budget_total": 15000,
+    "budget_control": {
+        "mode": "estimate_admission_with_post_hoc_reconciliation",
+        "hard_cap_guaranteed": false,
+        "estimate_includes_system_message": true,
+        "system_overhead_chars": 307,
+        "note": "准入按估算输入+输出预留判断，不保证硬上限；请求后按实际 usage 核账，余额为负时标记 budget_overrun 并停止，该样本不计入正常预算样本。"
+    },
+    "output_reserve": 2000,
+    "selection_rule": "highest_visible_pass_count; tie -> earliest_generated",
+    "evaluation_scope": "visible_tests_only",
+    "file_hashes": {
+        "problem_processor.py": "c99dd1d33a78",
+        "independent_resample.py": "b27773c024db",
+        "generation.py": "ef7ff219a4da",
+        "traceRunner.py": "a4acf82a64d7"
+    },
+    "file_hashes_lf_normalized": {
+        "problem_processor.py": "dc21e6c05308",
+        "independent_resample.py": "08ec034f8063",
+        "generation.py": "fd1e147ecc24",
+        "traceRunner.py": "664902b3f37d"
+    },
+    "step_output_reserve": {
+        "direct_generation": 2000,
+        "instrumentation": 2000,
+        "analysis_planning": 4096,
+        "implementation": 3000
+    },
+    "step_input_estimate_ratio": {
+        "direct_generation": 0.35,
+        "instrumentation": 0.35,
+        "analysis_planning": 0.4,
+        "implementation": 0.35
+    },
+    "methods": {
+        "tracecoder": {
+            "no_instrumentation": true,
+            "max_debug_attempts": 5,
+            "max_no_improvement_streak": 2,
+            "remaining_budget_after": 14550
+        },
+        "independent_resample": {
+            "max_resamples": 10,
+            "stop_when_visible_passed": false,
+            "remaining_budget_after": 13500
+        }
+    },
+    "output_files_changed": []
+}
