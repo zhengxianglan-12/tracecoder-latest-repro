@@ -3,7 +3,7 @@
     "dataset": "classeval",
     "task_id": "ClassEval_0",
     "model": "fake-model",
-    "git_commit": "caa78fdb036eb7499819fd102a6810548995bee1",
+    "git_commit": "d054ebd023a1c4e105367b0f99dd2d8310070cdc",
     "git_dirty": true,
     "repo_dirty": true,
     "code_dirty": false,
@@ -66,5 +66,12 @@
             "remaining_budget_after": 13500
         }
     },
-    "output_files_changed": []
+    "output_files_changed": [
+        "results_test_dryrun/run_logs/classeval_ClassEval_0_dryrun_candidates_resample.json",
+        "results_test_dryrun/run_logs/classeval_ClassEval_0_dryrun_debug_session_log_tracecoder.json",
+        "results_test_dryrun/run_logs/classeval_ClassEval_0_dryrun_run_meta.json",
+        "results_test_dryrun/run_logs/classeval_ClassEval_0_dryrun_terminal_output.txt",
+        "results_test_dryrun/tables/classeval_ClassEval_0_dryrun_requests.csv",
+        "results_test_dryrun/tables/classeval_ClassEval_0_dryrun_summary.csv"
+    ]
 }

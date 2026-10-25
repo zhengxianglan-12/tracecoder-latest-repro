@@ -3,6 +3,7 @@
 #   python test_run_comparison.py
 
 import os
+import json
 import shutil
 from types import SimpleNamespace
 
@@ -94,6 +95,15 @@ def main():
     ]
     for p in expected:
         assert os.path.exists(p), f"缺少输出文件: {p}"
+
+    # 回填 output_files_changed：与 run_comparison.main() 口径一致
+    meta_path = f"{test_results_dir}/run_logs/{prefix}_run_meta.json"
+    with open(meta_path, "r", encoding="utf-8") as f:
+        meta = json.load(f)
+    meta["output_files_changed"] = sorted(expected)
+    with open(meta_path, "w", encoding="utf-8") as f:
+        json.dump(meta, f, indent=4, ensure_ascii=False)
+    print(f"[OK] output_files_changed 已回填至: {meta_path}（{len(expected)} 个文件）")
 
     print(f"\n[SUCCESS] dry-run 通过，输出在 {test_results_dir}/")
 
