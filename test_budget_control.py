@@ -240,6 +240,41 @@ def test_shared_budget_ledger():
     assert debug_res.get("budget_remaining") == after_debug
     print(f"[PASS] 调试循环继续扣同一账本：remaining_budget {after_initial} -> {after_debug}")
 
+# ============================================================
+# 小例 4：输入低估导致超限 —— 必须留痕并停止
+# 导师反例：估算 457、实际 461（多 4），余额变 -4。
+# 以前静默放过，现在必须标 budget_overrun=True、overrun_tokens=4、
+# remaining_after=-4，且 stopped_reason 含 "Budget overrun"。
+# ============================================================
+def test_input_underestimate_triggers_overrun_and_stop():
+    print("\n========== 小例 4：输入低估导致超限，必须留痕并停止 ==========")
+    prompt = make_problem_data()["complete_prompt"]
+    est_input = estimate_input_tokens(prompt, step="direct_generation")  # 457
+    output_reserve = 2000
+    need = est_input + output_reserve  # 2457
+    budget = need  # 恰好够准入，规则会放行
+    print(f"估算输入={est_input}, 输出预留={output_reserve}, 需要={need}, 预算={budget}")
+
+    # 替身实际用量：输入比估算多 4，模拟“估 457、实际 461”
+    p_tok = est_input + 4
+    c_tok = output_reserve
+    args = make_args(remaining_budget=budget, output_reserve=output_reserve)
+    fake_gen = FakeGenerator(mode="normal", prompt_tokens=p_tok, completion_tokens=c_tok)
+    original = install_fake_generator(fake_gen)
+    try:
+        res = _run_direct_generation(make_problem_data(), args, FakeEvaluator())
+    finally:
+        problem_processor.generator = original
+
+    assert len(fake_gen.calls) == 1, "准入放行后应发 1 次"
+    assert res.get("budget_overrun") is True, \
+        f"实际超限应标 budget_overrun=True，实际 {res.get('budget_overrun')}"
+    assert res.get("overrun_tokens") == 4, \
+        f"应超 4，实际 {res.get('overrun_tokens')}"
+    assert res.get("remaining_after") == -4, \
+        f"余额应为 -4，实际 {res.get('remaining_after')}"
+    print(f"[PASS] 输入低估 → overrun=True, overrun_tokens=4, remaining_after=-4")    
+
 
 if __name__ == '__main__':
     print("========== 预算控制三小例（不调用模型、不产生费用） ==========")
@@ -247,4 +282,5 @@ if __name__ == '__main__':
     test_budget_exactly_enough()
     test_missing_usage()
     test_shared_budget_ledger()
+    test_input_underestimate_triggers_overrun_and_stop()
     print("\n[SUCCESS] 预算控制小例全部通过！")

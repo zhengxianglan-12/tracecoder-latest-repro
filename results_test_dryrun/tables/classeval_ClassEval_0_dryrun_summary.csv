@@ -1,3 +1,0 @@
-task_id,method,num_requests,prompt_tokens,completion_tokens,stopped_reason,final_visible_passed_count,final_code_hash,budget_remaining_after,evaluation_scope,selection_rule
-ClassEval_0,tracecoder,3,300,150,All tests passed,19,23c64173,14550,visible_tests_only,tracecoder_internal_best
-ClassEval_0,independent_resample,10,1000,500,Max resamples reached,19,23c64173,13500,visible_tests_only,highest_visible_pass_count; tie -> earliest_generated

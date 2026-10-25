@@ -46,7 +46,7 @@ class FakeGenerator:
         self.instrumented_code = instrumented_code
         self.requests = []  # 逐请求记录：编号 + 类型 + prompt 长度
 
-    def __call__(self, prompt, task_type, model):
+    def __call__(self, prompt, task_type, model, max_tokens_response=4096):
         req_id = len(self.requests) + 1
 
         # 顺序很重要：分析规划 prompt 里同时含 REPAIR_PLAN_START 和
@@ -106,6 +106,10 @@ def make_args(max_debug_attempts=5, max_no_improvement_streak=2,
         no_instrumentation=no_instrumentation,
         timeout=timeout,
         model="fake-model",
+        # 状态机测试只验证分支记录，不验证预算；给足预算让核账正常走
+        budget_total=10**9,
+        remaining_budget=10**9,
+        output_reserve=2000,
     )
 
 
@@ -311,7 +315,9 @@ if __name__ == '__main__':
         args = SN(model="fake-model", dataset="classeval",
                   no_instrumentation=True, no_two_step_repair=False,
                   max_debug_attempts=5, max_no_improvement_streak=2,
-                  timeout=10)
+                  timeout=10,
+                  budget_total=10**9, remaining_budget=10**9,
+                  output_reserve=2000)
         original_generator = problem_processor.generator
         problem_processor.generator = fake_gen
         try:

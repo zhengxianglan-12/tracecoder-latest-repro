@@ -186,6 +186,16 @@ def main():
             "file_hashes_lf_normalized 为 LF 归一化后 MD5；"
             "跨平台对比请使用 LF 归一化口径"
         ),
+        "budget_control": {
+            "mode": "estimate_admission_with_post_hoc_reconciliation",
+            "hard_cap_guaranteed": False,
+            "estimate_includes_system_message": True,
+            "system_overhead_chars": 307,
+            "note": (
+                "准入按估算输入+输出预留判断，不保证硬上限；"
+                "请求后按实际 usage 核账，余额为负时标记 budget_overrun 并停止。"
+            ),
+        },
 
         # 输出文件变动清单（运行结束后回填）
         "output_files_changed": [],
@@ -260,6 +270,9 @@ def main():
         print("\nManual interruption detected. Saving existing results...")
     finally:
         save_results(results_data, OUTPUT_CSV_FILENAME)
+        overrun_tasks = [r.get("task_id") for r in results_data if r.get("budget_overrun")]
+        if overrun_tasks:
+            print(f"[WARN] 以下题目发生预算超限（不计入正常预算样本）: {overrun_tasks}")
         print_summary(results_data)
 
         # 回填输出文件变动清单：运行后与运行前快照对比

@@ -241,6 +241,17 @@ def write_outputs(task_id, safe_task, run_time, cli,
         "code_dirty": _code_dirty(),
         "code_dependency_files": CODE_DEPENDENCY_FILES,
         "budget_total": cli.budget_total,
+        "budget_control": {
+            "mode": "estimate_admission_with_post_hoc_reconciliation",
+            "hard_cap_guaranteed": False,
+            "estimate_includes_system_message": True,
+            "system_overhead_chars": 307,
+            "note": (
+                "准入按估算输入+输出预留判断，不保证硬上限；"
+                "请求后按实际 usage 核账，余额为负时标记 budget_overrun 并停止，"
+                "该样本不计入正常预算样本。"
+            ),
+        },
         "output_reserve": cli.output_reserve,
         "selection_rule": SELECTION_RULE,
         "evaluation_scope": EVALUATION_SCOPE,
@@ -326,32 +337,50 @@ def write_outputs(task_id, safe_task, run_time, cli,
 
     # ---------- 4. requests ----------
     trace_requests = []
-    for r in trace_res.get("request_log", []) or []:
+    for idx, r in enumerate(trace_res.get("request_log", []) or [], start=1):
         trace_requests.append({
             "method": "tracecoder",
-            "request_id": r.get("attempt"),
+            "request_id": f"T{idx:02d}",
+            "attempt": r.get("attempt"),
             "stage": r.get("stage"),
+            "sent": r.get("sent", True),
+            "estimated_input": r.get("estimated_input"),
+            "output_reserve": r.get("output_reserve"),
             "prompt_tokens": r.get("prompt_tokens"),
             "completion_tokens": r.get("completion_tokens"),
+            "remaining_before": r.get("remaining_before"),
             "remaining_after": r.get("remaining_after"),
+            "overrun_tokens": r.get("overrun_tokens", 0),
+            "budget_overrun": r.get("budget_overrun", False),
+            "stopped_reason": r.get("stopped_reason"),
             "visible_passed_count": None,
-            "status": r.get("stage"),
         })
     resample_requests = []
-    for r in resample_res.get("requests", []) or []:
+    for idx, r in enumerate(resample_res.get("requests", []) or [], start=1):
         resample_requests.append({
             "method": "independent_resample",
-            "request_id": r.get("request_id"),
+            "request_id": f"R{idx:02d}",
+            "attempt": None,
             "stage": "resample",
+            "sent": True,
+            "estimated_input": None,
+            "output_reserve": None,
             "prompt_tokens": r.get("prompt_tokens"),
             "completion_tokens": r.get("completion_tokens"),
+            "remaining_before": None,
             "remaining_after": r.get("remaining_after"),
+            "overrun_tokens": 0,
+            "budget_overrun": False,
+            "stopped_reason": None,
             "visible_passed_count": None,
-            "status": "resample",
         })
     all_requests = trace_requests + resample_requests
-    req_headers = ["method", "request_id", "stage", "prompt_tokens", "completion_tokens",
-                   "remaining_after", "visible_passed_count", "status"]
+    req_headers = ["method", "request_id", "attempt", "stage", "sent",
+                   "estimated_input", "output_reserve",
+                   "prompt_tokens", "completion_tokens",
+                   "remaining_before", "remaining_after",
+                   "overrun_tokens", "budget_overrun",
+                   "stopped_reason", "visible_passed_count"]
     _write_csv(f"{results_dir}/tables/{prefix}_requests.csv",
                all_requests, req_headers)
 
@@ -367,6 +396,15 @@ def write_outputs(task_id, safe_task, run_time, cli,
             "final_code_hash": _get_hash(trace_res.get("final_code", "")),
             "budget_remaining_after": args_trace.remaining_budget,
             "evaluation_scope": EVALUATION_SCOPE,
+            "num_requests_sent": sum(1 for r in (trace_res.get("request_log") or []) if r.get("sent", True)),
+            "num_requests_rejected": sum(1 for r in (trace_res.get("request_log") or []) if not r.get("sent", True)),
+            "num_debug_attempts": len(trace_res.get("debug_session_log") or []),
+            "num_candidates": len(trace_res.get("debug_session_log") or []),
+            "budget_overrun": trace_res.get("budget_overrun", False),
+            "overrun_tokens": trace_res.get("overrun_tokens", 0),
+            "git_commit": _git_commit(),
+            "budget_total": cli.budget_total,
+            "original_files_prefix": prefix,
             "selection_rule": "tracecoder_internal_best",
         },
         {
@@ -379,12 +417,26 @@ def write_outputs(task_id, safe_task, run_time, cli,
             "final_code_hash": resample_res.get("final_code_hash"),
             "budget_remaining_after": args_resample.remaining_budget,
             "evaluation_scope": resample_res.get("evaluation_scope"),
+            "num_requests_sent": resample_res.get("num_requests"),
+            "num_requests_rejected": 0,
+            "num_debug_attempts": None,
+            "num_candidates": len(resample_res.get("candidates") or []),
+            "budget_overrun": resample_res.get("budget_overrun", False),
+            "overrun_tokens": resample_res.get("overrun_tokens", 0),
+            "git_commit": _git_commit(),
+            "budget_total": cli.budget_total,
+            "original_files_prefix": prefix,
             "selection_rule": resample_res.get("selection_rule"),
         },
     ]
-    summary_headers = ["task_id", "method", "num_requests", "prompt_tokens", "completion_tokens",
-                       "stopped_reason", "final_visible_passed_count", "final_code_hash",
-                       "budget_remaining_after", "evaluation_scope", "selection_rule"]
+    summary_headers = ["task_id", "method", "git_commit", "budget_total",
+                       "num_requests", "num_requests_sent",
+                       "num_requests_rejected", "num_debug_attempts", "num_candidates",
+                       "prompt_tokens", "completion_tokens", "stopped_reason",
+                       "budget_overrun", "overrun_tokens",
+                       "final_visible_passed_count", "final_code_hash",
+                       "budget_remaining_after", "evaluation_scope", "selection_rule",
+                       "original_files_prefix"]
     _write_csv(f"{results_dir}/tables/{prefix}_summary.csv",
                summary_rows, summary_headers)
 

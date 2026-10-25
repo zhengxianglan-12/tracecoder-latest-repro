@@ -319,16 +319,18 @@ INPUT_ESTIMATE_RATIO = {
     "implementation": 0.35,
 }
 DEFAULT_INPUT_RATIO = 0.35
+# 系统消息等固定开销（字符数）；与 src/generation.py 的 system prompt 保持同步
+SYSTEM_OVERHEAD_CHARS = 307
+
 
 
 def estimate_input_tokens(text: str, step: str = None) -> int:
     """
-    估算输入 token：按字符数 * 步骤系数。
-    系数偏低是有意的——宁可低估、让请求发出去，用实际 usage 扣账；
-    也不高估、把明明够的请求卡掉。
+    估算输入 token：按 (prompt 字符数 + 系统消息开销) * 步骤系数。
+    这是估算准入，不是硬上限；实际用量以 API 返回的 usage 为准。
     """
     ratio = INPUT_ESTIMATE_RATIO.get(step, DEFAULT_INPUT_RATIO)
-    return int(len(text) * ratio)
+    return int((len(text) + SYSTEM_OVERHEAD_CHARS) * ratio)
 
 
 def budget_check_and_reserve(remaining_budget, prompt, output_reserve, step=None):
@@ -337,6 +339,20 @@ def budget_check_and_reserve(remaining_budget, prompt, output_reserve, step=None
     """
     need = estimate_input_tokens(prompt, step) + output_reserve
     return need, (remaining_budget >= need)
+
+def reconcile_budget_after_request(remaining_before, p_tokens, c_tokens):
+    """
+    请求发出后按实际用量核账。
+    返回 (remaining_after, overrun_tokens, overrun_flag)
+    - remaining_after: 扣减实际用量后的余额（可能为负）
+    - overrun_tokens: 超出的 token 数（未超为 0）
+    - overrun_flag: 余额是否为负
+    """
+    actual = (p_tokens or 0) + (c_tokens or 0)
+    remaining_after = remaining_before - actual
+    overrun_tokens = max(0, -remaining_after)
+    return remaining_after, overrun_tokens, (remaining_after < 0)
+
 # --- Core Processing Functions ---
 def _run_direct_generation(problem_data, args, check_correctness_func_param: Callable):
     prompt = problem_data.get('complete_prompt', '')
@@ -361,12 +377,24 @@ def _run_direct_generation(problem_data, args, check_correctness_func_param: Cal
                 "prompt_tokens": None, "completion_tokens": None,
                 "usage_unverifiable": True}
 
+    budget_overrun = False
+    overrun_tokens = 0
+    remaining_after = remaining
     if remaining is not None:
-        args.remaining_budget = remaining - (p_tokens + c_tokens)
+        remaining_after, overrun_tokens, budget_overrun = reconcile_budget_after_request(
+            remaining, p_tokens, c_tokens
+        )
+        args.remaining_budget = remaining_after
 
     eval_result = check_correctness_func_param(problem_data, generated_code, args.timeout)
+
+    # 初始生成后若已超限：仍返回代码与评测，但标记超限，由 process_problem 停止后续调试
     return {"code": generated_code, "eval_result": eval_result,
-            "prompt_tokens": p_tokens, "completion_tokens": c_tokens}
+            "prompt_tokens": p_tokens, "completion_tokens": c_tokens,
+            "remaining_before": remaining,
+            "remaining_after": remaining_after,
+            "budget_overrun": budget_overrun,
+            "overrun_tokens": overrun_tokens}
 
 
 def _run_self_debugging(initial_code, initial_eval, problem_data, args, check_correctness_func_param: Callable):
@@ -409,9 +437,16 @@ def _run_self_debugging(initial_code, initial_eval, problem_data, args, check_co
                     request_log.append({
                         "stage": "skipped_budget_instrumentation",
                         "attempt": attempt,
+                        "sent": False,
+                        "estimated_input": need - output_reserve,
+                        "output_reserve": output_reserve,
                         "prompt_tokens": 0,
                         "completion_tokens": 0,
+                        "remaining_before": remaining,
                         "remaining_after": remaining,
+                        "overrun_tokens": 0,
+                        "budget_overrun": False,
+                        "stopped_reason": "Budget insufficient before instrumentation request",
                     })
                     log.append({
                         "attempt": attempt,
@@ -456,15 +491,51 @@ def _run_self_debugging(initial_code, initial_eval, problem_data, args, check_co
                     "cost_cumulative": {"prompt_tokens": p_tokens, "completion_tokens": c_tokens},
                 })
                 break
-            args.remaining_budget = remaining - (p + c)
+            remaining_before = remaining
+            remaining_after, overrun_tokens, budget_overrun = reconcile_budget_after_request(
+                remaining_before, p, c
+            )
+            args.remaining_budget = remaining_after
             p_tokens, c_tokens = p_tokens + p, c_tokens + c
             request_log.append({
                 "stage": "instrumentation",
                 "attempt": attempt,
+                "sent": True,
+                "estimated_input": need - output_reserve,
+                "output_reserve": output_reserve,
                 "prompt_tokens": p,
                 "completion_tokens": c,
-                "remaining_after": args.remaining_budget,
+                "remaining_before": remaining_before,
+                "remaining_after": remaining_after,
+                "overrun_tokens": overrun_tokens,
+                "budget_overrun": budget_overrun,
+                "stopped_reason": None,
             })
+            if budget_overrun:
+                logging.error(
+                    f"[budget] OVERRUN after instrumentation: before={remaining_before}, "
+                    f"actual={p + c}, after={remaining_after}"
+                )
+                budget_exhausted = True
+                request_log[-1]["stopped_reason"] = "Budget overrun after instrumentation request"
+                log.append({
+                    "attempt": attempt,
+                    "input_code": input_code_at_attempt_start,
+                    "input_code_hash": get_hash(input_code_at_attempt_start),
+                    "status": "budget_overrun",
+                    "plan": None,
+                    "eval_result": {"passed": False, "passed_count": 0, "total_count": 0},
+                    "candidate_code_hash": "empty",
+                    "next_input_intended": get_hash(code_to_debug),
+                    "next_input_actual": None,
+                    "best_code_hash": get_hash(best_code),
+                    "candidate_code": "", "next_input_code": code_to_debug, "best_code": best_code,
+                    "stopped_reason": "Budget overrun after instrumentation request",
+                    "overrun_tokens": overrun_tokens,
+                    "cost": {"prompt_tokens": p, "completion_tokens": c},
+                    "cost_cumulative": {"prompt_tokens": p_tokens, "completion_tokens": c_tokens},
+                })
+                break
             if instrumented_code_gen.strip():
                 instrumented_code = instrumented_code_gen
                 exec_result = execute_code_and_capture_prints_last(
@@ -480,6 +551,20 @@ def _run_self_debugging(initial_code, initial_eval, problem_data, args, check_co
             if not ok:
                 logging.info(f"[budget] analysis skipped: need ~{need}, remaining {remaining}")
                 budget_exhausted = True
+                request_log.append({
+                    "stage": "skipped_budget_analysis",
+                    "attempt": attempt,
+                    "sent": False,
+                    "estimated_input": need - output_reserve,
+                    "output_reserve": output_reserve,
+                    "prompt_tokens": 0,
+                    "completion_tokens": 0,
+                    "remaining_before": remaining,
+                    "remaining_after": remaining,
+                    "overrun_tokens": 0,
+                    "budget_overrun": False,
+                    "stopped_reason": "Budget insufficient before analysis request",
+                })
                 log.append({
                     "attempt": attempt,
                     "status": "budget_exhausted",
@@ -523,15 +608,51 @@ def _run_self_debugging(initial_code, initial_eval, problem_data, args, check_co
                 "cost_cumulative": {"prompt_tokens": p_tokens, "completion_tokens": c_tokens},
             })
             break
-        args.remaining_budget = remaining - (p + c)
+        remaining_before = remaining
+        remaining_after, overrun_tokens, budget_overrun = reconcile_budget_after_request(
+            remaining_before, p, c
+        )
+        args.remaining_budget = remaining_after
         p_tokens, c_tokens = p_tokens + p, c_tokens + c
         request_log.append({
             "stage": "analysis_planning",
             "attempt": attempt,
+            "sent": True,
+            "estimated_input": need - output_reserve,
+            "output_reserve": output_reserve,
             "prompt_tokens": p,
             "completion_tokens": c,
-            "remaining_after": args.remaining_budget,
+            "remaining_before": remaining_before,
+            "remaining_after": remaining_after,
+            "overrun_tokens": overrun_tokens,
+            "budget_overrun": budget_overrun,
+            "stopped_reason": None,
         })
+        if budget_overrun:
+            logging.error(
+                f"[budget] OVERRUN after analysis: before={remaining_before}, "
+                f"actual={p + c}, after={remaining_after}"
+            )
+            budget_exhausted = True
+            request_log[-1]["stopped_reason"] = "Budget overrun after analysis request"
+            log.append({
+                "attempt": attempt,
+                "status": "budget_overrun",
+                "input_code": input_code_at_attempt_start,
+                "input_code_hash": get_hash(input_code_at_attempt_start),
+                "plan": None,
+                "eval_result": {"passed": False, "passed_count": 0, "total_count": 0},
+                "candidate_code_hash": "empty",
+                "next_input_intended": get_hash(code_to_debug),
+                "next_input_actual": None,
+                "best_code_hash": get_hash(best_code),
+                "candidate_code": "", "next_input_code": code_to_debug, "best_code": best_code,
+                "stopped_reason": "Budget overrun after analysis request",
+                "overrun_tokens": overrun_tokens,
+                "cost": {"prompt_tokens": p, "completion_tokens": c},
+                "cost_cumulative": {"prompt_tokens": p_tokens, "completion_tokens": c_tokens},
+            })
+            break
 
         repair_plan, instrumentation_suggestions = _parse_llm_output(llm_response)
         candidate_code = ""
@@ -567,6 +688,20 @@ def _run_self_debugging(initial_code, initial_eval, problem_data, args, check_co
             if not ok:
                 logging.info(f"[budget] implementation skipped: need ~{need}, remaining {remaining}")
                 budget_exhausted = True
+                request_log.append({
+                    "stage": "skipped_budget_implementation",
+                    "attempt": attempt,
+                    "sent": False,
+                    "estimated_input": need - output_reserve,
+                    "output_reserve": output_reserve,
+                    "prompt_tokens": 0,
+                    "completion_tokens": 0,
+                    "remaining_before": remaining,
+                    "remaining_after": remaining,
+                    "overrun_tokens": 0,
+                    "budget_overrun": False,
+                    "stopped_reason": "Budget insufficient before implementation request",
+                })
                 log.append({
                     "attempt": attempt,
                     "status": "budget_exhausted",
@@ -610,16 +745,53 @@ def _run_self_debugging(initial_code, initial_eval, problem_data, args, check_co
                 "cost_cumulative": {"prompt_tokens": p_tokens, "completion_tokens": c_tokens},
             })
             break
-        args.remaining_budget = remaining - (p_impl + c_impl)
+        remaining_before = remaining
+        remaining_after, overrun_tokens, budget_overrun = reconcile_budget_after_request(
+            remaining_before, p_impl, c_impl
+        )
+        args.remaining_budget = remaining_after
         p_tokens, c_tokens = p_tokens + p_impl, c_tokens + c_impl
         request_log.append({
             "stage": "implementation",
             "attempt": attempt,
+            "sent": True,
+            "estimated_input": need - output_reserve,
+            "output_reserve": output_reserve,
             "prompt_tokens": p_impl,
             "completion_tokens": c_impl,
-            "remaining_after": args.remaining_budget,
+            "remaining_before": remaining_before,
+            "remaining_after": remaining_after,
+            "overrun_tokens": overrun_tokens,
+            "budget_overrun": budget_overrun,
+            "stopped_reason": None,
         })
+        if budget_overrun:
+            logging.error(
+                f"[budget] OVERRUN after implementation: before={remaining_before}, "
+                f"actual={p_impl + c_impl}, after={remaining_after}"
+            )
+            budget_exhausted = True
+            request_log[-1]["stopped_reason"] = "Budget overrun after implementation request"
+            log.append({
+                "attempt": attempt,
+                "status": "budget_overrun",
+                "input_code": input_code_at_attempt_start,
+                "input_code_hash": get_hash(input_code_at_attempt_start),
+                "plan": repair_plan,
+                "eval_result": {"passed": False, "passed_count": 0, "total_count": 0},
+                "candidate_code_hash": "empty",
+                "next_input_intended": get_hash(code_to_debug),
+                "next_input_actual": None,
+                "best_code_hash": get_hash(best_code),
+                "candidate_code": "", "next_input_code": code_to_debug, "best_code": best_code,
+                "stopped_reason": "Budget overrun after implementation request",
+                "overrun_tokens": overrun_tokens,
+                "cost": {"prompt_tokens": p_impl, "completion_tokens": c_impl},
+                "cost_cumulative": {"prompt_tokens": p_tokens, "completion_tokens": c_tokens},
+            })
+            break
         candidate_code = _parse_implementation_output(llm_response_impl)
+        
 
         # ----- 分支 B：空代码退出 -----
         if not candidate_code.strip():
@@ -737,6 +909,8 @@ def _run_self_debugging(initial_code, initial_eval, problem_data, args, check_co
         "budget_exhausted": budget_exhausted,
         "budget_remaining": getattr(args, "remaining_budget", None),
         "usage_unverifiable": usage_unverifiable_flag,
+        "budget_overrun": any(r.get("budget_overrun") for r in request_log),
+        "overrun_tokens": sum(r.get("overrun_tokens", 0) for r in request_log),
         "final_best_attempt": best_attempt,
         "final_best_source": (
             "initial_generation" if best_attempt == 0 else f"attempt_{best_attempt}"
@@ -798,6 +972,27 @@ def process_problem(problem_data, task_id, args, check_correctness_func_param: C
         print(f"Problem {task_id} processing completed. Final result: Failed (usage unverifiable)")
         return result
 
+    # 分支：初始生成后已超限 → 留痕并停止，不进入调试
+    if gen_res.get("budget_overrun"):
+        result = {
+            "task_id": task_id, "model": args.model, "dataset": args.dataset,
+            "method_instrumentation": not args.no_instrumentation,
+            "method_two_step_repair": not args.no_two_step_repair,
+            "direct_gen_code": gen_res["code"], "direct_gen_eval": gen_res["eval_result"],
+            "direct_gen_passed": gen_res["eval_result"].get("passed", False),
+            "final_code": gen_res["code"], "final_eval": gen_res["eval_result"],
+            "final_passed": False,
+            "stopped_reason": "Budget overrun after direct generation",
+            "budget_overrun": True,
+            "overrun_tokens": gen_res.get("overrun_tokens", 0),
+            "total_prompt_tokens": gen_res["prompt_tokens"],
+            "total_completion_tokens": gen_res["completion_tokens"],
+            "request_log": initial_request_log,
+            "processing_time_seconds": time.time() - start_time,
+        }
+        print(f"Problem {task_id} processing completed. Final result: Failed (budget overrun)")
+        return result
+
     # 初始生成正常：判 None 后累加，不再重复赋值
     total_p = gen_res["prompt_tokens"] if gen_res["prompt_tokens"] is not None else 0
     total_c = gen_res["completion_tokens"] if gen_res["completion_tokens"] is not None else 0
@@ -836,6 +1031,8 @@ def process_problem(problem_data, task_id, args, check_correctness_func_param: C
             "budget_exhausted": debug_res.get("budget_exhausted", False),
             "budget_remaining": debug_res.get("budget_remaining"),
             "usage_unverifiable": debug_res.get("usage_unverifiable", False),
+            "budget_overrun": debug_res.get("budget_overrun", False),
+            "overrun_tokens": debug_res.get("overrun_tokens", 0),
             "request_log": initial_request_log + debug_res.get("request_log", []),
         })
         if debug_res["prompt_tokens"] is not None:
