@@ -3,10 +3,10 @@
     "dataset": "classeval",
     "task_id": "ClassEval_0",
     "model": "fake-model",
-    "git_commit": "d054ebd023a1c4e105367b0f99dd2d8310070cdc",
+    "git_commit": "bed878cdedf16bb4218885039ed43cc7700cfe08",
     "git_dirty": true,
     "repo_dirty": true,
-    "code_dirty": false,
+    "code_dirty": true,
     "code_dependency_files": [
         "problem_processor.py",
         "independent_resample.py",
@@ -29,15 +29,17 @@
     "output_reserve": 2000,
     "selection_rule": "highest_visible_pass_count; tie -> earliest_generated",
     "evaluation_scope": "visible_tests_only",
+    "overrun_candidate_policy": "kept_but_excluded_from_selection",
+    "num_requests_definition": "ledger_rows = num_requests_sent + num_requests_rejected + num_requests_usage_unverifiable",
     "file_hashes": {
-        "problem_processor.py": "c99dd1d33a78",
-        "independent_resample.py": "b27773c024db",
+        "problem_processor.py": "45ae7ea1fc3c",
+        "independent_resample.py": "422f7215bc18",
         "generation.py": "ef7ff219a4da",
         "traceRunner.py": "a4acf82a64d7"
     },
     "file_hashes_lf_normalized": {
-        "problem_processor.py": "dc21e6c05308",
-        "independent_resample.py": "08ec034f8063",
+        "problem_processor.py": "9af678ad3289",
+        "independent_resample.py": "91f9d45b5a7b",
         "generation.py": "fd1e147ecc24",
         "traceRunner.py": "664902b3f37d"
     },

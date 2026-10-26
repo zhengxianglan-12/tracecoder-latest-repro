@@ -5,7 +5,7 @@
     "method": "independent_resample",
     "candidates": [
         {
-            "request_id": 1,
+            "request_id": "R01",
             "code_hash": "3cb3656d",
             "visible_passed_count": 10,
             "visible_passed": false,
@@ -19,10 +19,13 @@
                 "failed_tests": []
             },
             "selected": false,
-            "selection_reason": ""
+            "selection_reason": "",
+            "budget_overrun": false,
+            "overrun_tokens": 0,
+            "remaining_after": 14850
         },
         {
-            "request_id": 2,
+            "request_id": "R02",
             "code_hash": "13b7f7fd",
             "visible_passed_count": 13,
             "visible_passed": false,
@@ -36,10 +39,13 @@
                 "failed_tests": []
             },
             "selected": false,
-            "selection_reason": ""
+            "selection_reason": "",
+            "budget_overrun": false,
+            "overrun_tokens": 0,
+            "remaining_after": 14700
         },
         {
-            "request_id": 3,
+            "request_id": "R03",
             "code_hash": "a77973cb",
             "visible_passed_count": 12,
             "visible_passed": false,
@@ -53,10 +59,13 @@
                 "failed_tests": []
             },
             "selected": false,
-            "selection_reason": ""
+            "selection_reason": "",
+            "budget_overrun": false,
+            "overrun_tokens": 0,
+            "remaining_after": 14550
         },
         {
-            "request_id": 4,
+            "request_id": "R04",
             "code_hash": "23c64173",
             "visible_passed_count": 19,
             "visible_passed": true,
@@ -70,10 +79,13 @@
                 "failed_tests": []
             },
             "selected": true,
-            "selection_reason": "highest_visible_pass_count; tie -> earliest_generated"
+            "selection_reason": "highest_visible_pass_count; tie -> earliest_generated",
+            "budget_overrun": false,
+            "overrun_tokens": 0,
+            "remaining_after": 14400
         },
         {
-            "request_id": 5,
+            "request_id": "R05",
             "code_hash": "48fc3b4e",
             "visible_passed_count": 12,
             "visible_passed": false,
@@ -87,10 +99,13 @@
                 "failed_tests": []
             },
             "selected": false,
-            "selection_reason": ""
+            "selection_reason": "",
+            "budget_overrun": false,
+            "overrun_tokens": 0,
+            "remaining_after": 14250
         },
         {
-            "request_id": 6,
+            "request_id": "R06",
             "code_hash": "48fc3b4e",
             "visible_passed_count": 12,
             "visible_passed": false,
@@ -104,10 +119,13 @@
                 "failed_tests": []
             },
             "selected": false,
-            "selection_reason": ""
+            "selection_reason": "",
+            "budget_overrun": false,
+            "overrun_tokens": 0,
+            "remaining_after": 14100
         },
         {
-            "request_id": 7,
+            "request_id": "R07",
             "code_hash": "48fc3b4e",
             "visible_passed_count": 12,
             "visible_passed": false,
@@ -121,10 +139,13 @@
                 "failed_tests": []
             },
             "selected": false,
-            "selection_reason": ""
+            "selection_reason": "",
+            "budget_overrun": false,
+            "overrun_tokens": 0,
+            "remaining_after": 13950
         },
         {
-            "request_id": 8,
+            "request_id": "R08",
             "code_hash": "48fc3b4e",
             "visible_passed_count": 12,
             "visible_passed": false,
@@ -138,10 +159,13 @@
                 "failed_tests": []
             },
             "selected": false,
-            "selection_reason": ""
+            "selection_reason": "",
+            "budget_overrun": false,
+            "overrun_tokens": 0,
+            "remaining_after": 13800
         },
         {
-            "request_id": 9,
+            "request_id": "R09",
             "code_hash": "48fc3b4e",
             "visible_passed_count": 12,
             "visible_passed": false,
@@ -155,10 +179,13 @@
                 "failed_tests": []
             },
             "selected": false,
-            "selection_reason": ""
+            "selection_reason": "",
+            "budget_overrun": false,
+            "overrun_tokens": 0,
+            "remaining_after": 13650
         },
         {
-            "request_id": 10,
+            "request_id": "R10",
             "code_hash": "48fc3b4e",
             "visible_passed_count": 12,
             "visible_passed": false,
@@ -172,7 +199,10 @@
                 "failed_tests": []
             },
             "selected": false,
-            "selection_reason": ""
+            "selection_reason": "",
+            "budget_overrun": false,
+            "overrun_tokens": 0,
+            "remaining_after": 13500
         }
     ],
     "selection_rule": "highest_visible_pass_count; tie -> earliest_generated",
