@@ -275,6 +275,30 @@ def test_summary_consistency_resample():
 
 
 def main():
+    import logging, sys
+
+    class _Tee:
+        def __init__(self, *streams):
+            self.streams = streams
+        def write(self, data):
+            for s in self.streams:
+                s.write(data)
+        def flush(self):
+            for s in self.streams:
+                s.flush()
+
+    _log_file = open("test_budget_matrix_output.txt", "w", encoding="utf-8")
+    sys.stdout = _Tee(sys.__stdout__, _log_file)
+    sys.stderr = _Tee(sys.__stderr__, _log_file)
+
+    # 注意：handler 用 sys.stdout（已被 _Tee 接管），不要再用 FileHandler
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(levelname)s:%(name)s:%(message)s",
+        handlers=[logging.StreamHandler(sys.stdout)],
+        force=True,
+    )
+
     tests = [
         test_resample_exactly_enough,
         test_resample_not_enough,
@@ -291,6 +315,7 @@ def main():
     for t in tests:
         t()
     print("\n[SUCCESS] 两种方法 × 五种情况 + 一致性核对全部通过")
+    _log_file.close()
 
 
 if __name__ == "__main__":
