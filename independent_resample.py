@@ -10,7 +10,7 @@ import hashlib
 import logging
 
 from src.generation import generator
-from problem_processor import budget_check_and_reserve
+from problem_processor import budget_check_and_reserve, reconcile_budget_after_request
 
 
 # ============================================================
@@ -18,6 +18,9 @@ from problem_processor import budget_check_and_reserve
 # ============================================================
 SELECTION_RULE = "highest_visible_pass_count; tie -> earliest_generated"
 EVALUATION_SCOPE = "visible_tests_only"   # 若将来有独立测试，改为 "independent_test"
+# 超限候选策略：两种方法一致
+# kept_but_excluded_from_selection: 保留在 candidates 里并标记，但不参与最终选择
+OVERRUN_CANDIDATE_POLICY = "kept_but_excluded_from_selection"
 
 
 def _get_hash(code_str: str) -> str:
@@ -51,16 +54,36 @@ def _run_independent_resample(problem_data, args, check_correctness_func,
     budget_exhausted = False
     stopped_reason = None
     request_id = 0
+    # 用于在拒绝事件里给出唯一编号，不占用 request_id
+    rejected_id = 0
 
     while request_id < max_resamples:
         remaining = getattr(args, "remaining_budget", None)
 
+        
         # 1) 请求前预算检查：完整输入估算 + 输出预留
+        need = None
         if remaining is not None:
             need, ok = budget_check_and_reserve(remaining, prompt, output_reserve)
             if not ok:
                 budget_exhausted = True
                 stopped_reason = "Budget insufficient before resample request"
+                rejected_id += 1
+                requests.append({
+                    "request_id": f"RJ{rejected_id:02d}",
+                    "stage": "skipped_budget_resample",
+                    "sent": False,
+                    "estimated_input": need - output_reserve,
+                    "output_reserve": output_reserve,
+                    "prompt_tokens": 0,
+                    "completion_tokens": 0,
+                    "remaining_before": remaining,
+                    "remaining_after": remaining,
+                    "overrun_tokens": 0,
+                    "budget_overrun": False,
+                    "usage_unverifiable": False,
+                    "stopped_reason": stopped_reason,
+                })
                 logging.info(f"[resample] stop: need ~{need}, remaining {remaining}")
                 break
 
@@ -74,26 +97,50 @@ def _run_independent_resample(problem_data, args, check_correctness_func,
         # 3) 缺 usage：不可核验，停止
         if p_tokens is None or c_tokens is None:
             requests.append({
-                "request_id": request_id,
+                "request_id": f"R{request_id:02d}",
+                "stage": "resample",
+                "sent": True,
+                "estimated_input": (need - output_reserve) if need is not None else None,
+                "output_reserve": output_reserve,
                 "prompt_tokens": None,
                 "completion_tokens": None,
-                "remaining_after": remaining,
+                "remaining_before": remaining,
+                "remaining_after": remaining,        # 没核账，余额不变
+                "overrun_tokens": None,              # 未知，不是 0
+                "budget_overrun": None,              # 未知，不是 False
                 "usage_unverifiable": True,
+                "stopped_reason": "Usage missing for resample request",
             })
             stopped_reason = "Usage missing for resample request"
             logging.error("[resample] usage unverifiable, stopping.")
             break
 
-        # 4) 扣账（同一账本）
+        # 4) 事后核账（同一账本，与 TraceCoder 同口径）
+        remaining_before = remaining
+        remaining_after = remaining
+        overrun_tokens = 0
+        budget_overrun = False
         if remaining is not None:
-            args.remaining_budget = remaining - (p_tokens + c_tokens)
+            remaining_after, overrun_tokens, budget_overrun = reconcile_budget_after_request(
+                remaining_before, p_tokens, c_tokens
+            )
+            args.remaining_budget = remaining_after
         total_p += p_tokens
         total_c += c_tokens
         requests.append({
-            "request_id": request_id,
+            "request_id": f"R{request_id:02d}",
+            "stage": "resample",
+            "sent": True,
+            "estimated_input": (need - output_reserve) if need is not None else None,
+            "output_reserve": output_reserve,
             "prompt_tokens": p_tokens,
             "completion_tokens": c_tokens,
-            "remaining_after": getattr(args, "remaining_budget", None),
+            "remaining_before": remaining_before,
+            "remaining_after": remaining_after,
+            "overrun_tokens": overrun_tokens,
+            "budget_overrun": budget_overrun,
+            "usage_unverifiable": False,
+            "stopped_reason": None,
         })
 
         # 5) 只跑“可见测试”评测，用于候选选择
@@ -103,9 +150,23 @@ def _run_independent_resample(problem_data, args, check_correctness_func,
             "code": code,
             "visible_eval": visible_eval,
             "code_hash": _get_hash(code),
+            "budget_overrun": budget_overrun,
+            "overrun_tokens": overrun_tokens,
+            "remaining_after": remaining_after,
         })
 
-        # 6) 冻结规则：可见全过即停
+        # 6a) 超限优先：超限状态不能被“可见测试通过”掩盖
+        if budget_overrun:
+            budget_exhausted = True
+            stopped_reason = "Budget overrun after resample request"
+            requests[-1]["stopped_reason"] = stopped_reason
+            logging.error(
+                f"[resample] OVERRUN: before={remaining_before}, "
+                f"actual={p_tokens + c_tokens}, after={remaining_after}"
+            )
+            break
+
+        # 6b) 冻结规则：可见全过即停
         if stop_when_visible_passed and visible_eval.get("passed"):
             stopped_reason = "All visible tests passed"
             break
@@ -116,11 +177,12 @@ def _run_independent_resample(problem_data, args, check_correctness_func,
         else:
             stopped_reason = "Stopped"
 
-    # 7) 候选选择：只用可见测试结果；并列取最早
+    # 7) 候选选择：只用可见测试结果；并列取最早；超限候选不参与选择
+    selectable = [c for c in candidates if not c.get("budget_overrun")]
     best = None
-    if candidates:
+    if selectable:
         best = min(
-            candidates,
+            selectable,
             key=lambda c: (
                 -c["visible_eval"].get("passed_count", 0),
                 c["request_id"],
@@ -139,7 +201,7 @@ def _run_independent_resample(problem_data, args, check_correctness_func,
     for c in candidates:
         is_selected = (best is not None and c["request_id"] == best["request_id"])
         candidates_out.append({
-            "request_id": c["request_id"],
+            "request_id": f"R{c['request_id']:02d}",
             "code_hash": c["code_hash"],
             "visible_passed_count": c["visible_eval"].get("passed_count", 0),
             "visible_passed": c["visible_eval"].get("passed", False),
@@ -147,8 +209,12 @@ def _run_independent_resample(problem_data, args, check_correctness_func,
             "eval_result": c["visible_eval"],
             "selected": is_selected,
             "selection_reason": (
-                SELECTION_RULE if is_selected else ""
+                SELECTION_RULE if is_selected
+                else ("excluded_budget_overrun" if c.get("budget_overrun") else "")
             ),
+            "budget_overrun": c.get("budget_overrun"),
+            "overrun_tokens": c.get("overrun_tokens"),
+            "remaining_after": c.get("remaining_after"),
         })
 
     return {
@@ -159,12 +225,25 @@ def _run_independent_resample(problem_data, args, check_correctness_func,
         "final_visible_passed_count": final_eval.get("passed_count", 0),
         "candidates": candidates_out,
         "requests": requests,
+        # num_requests = 账本行数 = sent + rejected + usage_unverifiable
+        # 与 TraceCoder 的 len(request_log) 同口径；拆分见下面三个计数
         "num_requests": len(requests),
         "stopped_reason": stopped_reason,
         "prompt_tokens": total_p,
         "completion_tokens": total_c,
         "budget_exhausted": budget_exhausted,
         "budget_remaining": getattr(args, "remaining_budget", None),
+        # --- 超限汇总：与 TraceCoder 同口径 ---
+        "budget_overrun": any(r.get("budget_overrun") is True for r in requests),
+        "overrun_tokens": sum(r.get("overrun_tokens") or 0 for r in requests),
+        # --- 三类计数分开，不靠导出默认值 ---
+        "num_requests_sent": sum(1 for r in requests if r.get("sent") is True),
+        "num_requests_rejected": sum(1 for r in requests if r.get("sent") is False),
+        "num_requests_usage_unverifiable": sum(
+            1 for r in requests if r.get("usage_unverifiable")
+        ),
+        # --- 超限候选策略 ---
+        "overrun_candidate_policy": OVERRUN_CANDIDATE_POLICY,
         "selection_rule": SELECTION_RULE,
         "evaluation_scope": EVALUATION_SCOPE,
     }

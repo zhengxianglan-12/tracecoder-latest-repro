@@ -33,6 +33,7 @@ from independent_resample import (
     _run_independent_resample,
     SELECTION_RULE,
     EVALUATION_SCOPE,
+    OVERRUN_CANDIDATE_POLICY,
 )
 
 
@@ -255,6 +256,12 @@ def write_outputs(task_id, safe_task, run_time, cli,
         "output_reserve": cli.output_reserve,
         "selection_rule": SELECTION_RULE,
         "evaluation_scope": EVALUATION_SCOPE,
+        "overrun_candidate_policy": OVERRUN_CANDIDATE_POLICY,
+        "num_requests_definition": (
+    "ledger_rows = num_requests_sent + num_requests_rejected; "
+    "num_requests_usage_unverifiable is a subset of num_requests_sent "
+    "(a sent request whose usage was missing)"
+        ),
         "file_hashes": {
             "problem_processor.py": _file_hash("problem_processor.py"),
             "independent_resample.py": _file_hash("independent_resample.py"),
@@ -343,15 +350,15 @@ def write_outputs(task_id, safe_task, run_time, cli,
             "request_id": f"T{idx:02d}",
             "attempt": r.get("attempt"),
             "stage": r.get("stage"),
-            "sent": r.get("sent", True),
+            "sent": r.get("sent"),
             "estimated_input": r.get("estimated_input"),
             "output_reserve": r.get("output_reserve"),
             "prompt_tokens": r.get("prompt_tokens"),
             "completion_tokens": r.get("completion_tokens"),
             "remaining_before": r.get("remaining_before"),
             "remaining_after": r.get("remaining_after"),
-            "overrun_tokens": r.get("overrun_tokens", 0),
-            "budget_overrun": r.get("budget_overrun", False),
+            "overrun_tokens": r.get("overrun_tokens"),
+            "budget_overrun": r.get("budget_overrun"),
             "stopped_reason": r.get("stopped_reason"),
             "visible_passed_count": None,
         })
@@ -359,19 +366,19 @@ def write_outputs(task_id, safe_task, run_time, cli,
     for idx, r in enumerate(resample_res.get("requests", []) or [], start=1):
         resample_requests.append({
             "method": "independent_resample",
-            "request_id": f"R{idx:02d}",
+            "request_id": r.get("request_id", f"R{idx:02d}"),
             "attempt": None,
-            "stage": "resample",
-            "sent": True,
-            "estimated_input": None,
-            "output_reserve": None,
+            "stage": r.get("stage", "resample"),
+            "sent": r.get("sent"),                          # None 表示未记录
+            "estimated_input": r.get("estimated_input"),
+            "output_reserve": r.get("output_reserve"),
             "prompt_tokens": r.get("prompt_tokens"),
             "completion_tokens": r.get("completion_tokens"),
-            "remaining_before": None,
+            "remaining_before": r.get("remaining_before"),
             "remaining_after": r.get("remaining_after"),
-            "overrun_tokens": 0,
-            "budget_overrun": False,
-            "stopped_reason": None,
+            "overrun_tokens": r.get("overrun_tokens"),      # None，不是 0
+            "budget_overrun": r.get("budget_overrun"),      # None，不是 False
+            "stopped_reason": r.get("stopped_reason"),
             "visible_passed_count": None,
         })
     all_requests = trace_requests + resample_requests
@@ -396,12 +403,13 @@ def write_outputs(task_id, safe_task, run_time, cli,
             "final_code_hash": _get_hash(trace_res.get("final_code", "")),
             "budget_remaining_after": args_trace.remaining_budget,
             "evaluation_scope": EVALUATION_SCOPE,
-            "num_requests_sent": sum(1 for r in (trace_res.get("request_log") or []) if r.get("sent", True)),
-            "num_requests_rejected": sum(1 for r in (trace_res.get("request_log") or []) if not r.get("sent", True)),
+            "num_requests_sent": sum(1 for r in (trace_res.get("request_log") or []) if r.get("sent") is True),
+            "num_requests_rejected": sum(1 for r in (trace_res.get("request_log") or []) if r.get("sent") is False),
+            "num_requests_usage_unverifiable": None,  # TraceCoder 缺 usage 走 log 不走 request_log，该路径不统计
             "num_debug_attempts": len(trace_res.get("debug_session_log") or []),
             "num_candidates": len(trace_res.get("debug_session_log") or []),
-            "budget_overrun": trace_res.get("budget_overrun", False),
-            "overrun_tokens": trace_res.get("overrun_tokens", 0),
+            "budget_overrun": trace_res.get("budget_overrun"),
+            "overrun_tokens": trace_res.get("overrun_tokens"),
             "git_commit": _git_commit(),
             "budget_total": cli.budget_total,
             "original_files_prefix": prefix,
@@ -417,12 +425,15 @@ def write_outputs(task_id, safe_task, run_time, cli,
             "final_code_hash": resample_res.get("final_code_hash"),
             "budget_remaining_after": args_resample.remaining_budget,
             "evaluation_scope": resample_res.get("evaluation_scope"),
-            "num_requests_sent": resample_res.get("num_requests"),
-            "num_requests_rejected": 0,
+            "num_requests_sent": resample_res.get("num_requests_sent"),
+            "num_requests_rejected": resample_res.get("num_requests_rejected"),
+            "num_requests_usage_unverifiable": resample_res.get(
+                "num_requests_usage_unverifiable"
+            ),
             "num_debug_attempts": None,
             "num_candidates": len(resample_res.get("candidates") or []),
-            "budget_overrun": resample_res.get("budget_overrun", False),
-            "overrun_tokens": resample_res.get("overrun_tokens", 0),
+            "budget_overrun": resample_res.get("budget_overrun"),   # 不默认 False
+            "overrun_tokens": resample_res.get("overrun_tokens"),   # 不默认 0
             "git_commit": _git_commit(),
             "budget_total": cli.budget_total,
             "original_files_prefix": prefix,
@@ -431,7 +442,8 @@ def write_outputs(task_id, safe_task, run_time, cli,
     ]
     summary_headers = ["task_id", "method", "git_commit", "budget_total",
                        "num_requests", "num_requests_sent",
-                       "num_requests_rejected", "num_debug_attempts", "num_candidates",
+                       "num_requests_rejected", "num_requests_usage_unverifiable",
+                       "num_debug_attempts", "num_candidates",
                        "prompt_tokens", "completion_tokens", "stopped_reason",
                        "budget_overrun", "overrun_tokens",
                        "final_visible_passed_count", "final_code_hash",

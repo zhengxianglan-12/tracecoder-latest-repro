@@ -21,7 +21,32 @@ from run_comparison import (
 )
 from config import DATASET_PATHS
 from src.dataset_loader import load_dataset
+def test_resample_budget_rejected():
+    """预算不足 → 拒绝事件进 requests，三数分开（sent=0, rejected=1）。"""
+    from independent_resample import _run_independent_resample
 
+    problem_data = {"complete_prompt": "x" * 1000, "test": ""}
+    args = SimpleNamespace(
+        model="fake-model", timeout=10, output_reserve=2000,
+        budget_total=100, remaining_budget=100,   # 远小于 估算 457 + 2000
+        max_resamples=10,
+    )
+
+    def fake_gen(*a, **kw):
+        raise AssertionError("预算不足时不应发请求")
+
+    res = _run_independent_resample(
+        problem_data, args, lambda *a: {"passed": False},
+        generator_func=fake_gen,
+    )
+    assert res["num_requests"] == 1, res
+    assert res["num_requests_sent"] == 0, res
+    assert res["num_requests_rejected"] == 1, res
+    assert res["num_requests_usage_unverifiable"] == 0, res
+    assert res["requests"][0]["sent"] is False
+    assert res["requests"][0]["request_id"] == "RJ01"
+    assert res["requests"][0]["stopped_reason"] == "Budget insufficient before resample request"
+    print("[PASS] resample 预算拒绝：num_requests=1, sent=0, rejected=1")
 
 def main():
     test_results_dir = "results_test_dryrun"
@@ -105,6 +130,7 @@ def main():
         json.dump(meta, f, indent=4, ensure_ascii=False)
     print(f"[OK] output_files_changed 已回填至: {meta_path}（{len(expected)} 个文件）")
 
+    test_resample_budget_rejected()
     print(f"\n[SUCCESS] dry-run 通过，输出在 {test_results_dir}/")
 
 

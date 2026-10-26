@@ -391,6 +391,7 @@ def _run_direct_generation(problem_data, args, check_correctness_func_param: Cal
     # 初始生成后若已超限：仍返回代码与评测，但标记超限，由 process_problem 停止后续调试
     return {"code": generated_code, "eval_result": eval_result,
             "prompt_tokens": p_tokens, "completion_tokens": c_tokens,
+            "estimated_input": need - output_reserve if remaining is not None else None,
             "remaining_before": remaining,
             "remaining_after": remaining_after,
             "budget_overrun": budget_overrun,
@@ -932,9 +933,17 @@ def process_problem(problem_data, task_id, args, check_correctness_func_param: C
         initial_request_log.append({
             "stage": "direct_generation",
             "attempt": 0,
+            "sent": True,
+            "estimated_input": gen_res.get("estimated_input"),
+            "output_reserve": get_step_output_reserve(args, "direct_generation"),
             "prompt_tokens": gen_res["prompt_tokens"],
             "completion_tokens": gen_res["completion_tokens"],
+            "remaining_before": gen_res.get("remaining_before"),
             "remaining_after": getattr(args, "remaining_budget", None),
+            "overrun_tokens": gen_res.get("overrun_tokens", 0),
+            "budget_overrun": gen_res.get("budget_overrun", False),
+            "usage_unverifiable": False,
+            "stopped_reason": None,
         })
 
 
