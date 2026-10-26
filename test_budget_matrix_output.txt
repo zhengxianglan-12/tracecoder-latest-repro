@@ -8,19 +8,19 @@ ERROR:root:[resample] usage unverifiable, stopping.
 ERROR:root:[resample] OVERRUN: before=2457, actual=2461, after=-4
 [PASS] resample 可见通过但超限：超限优先，候选被排除
 INFO:httpx:HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 400 Bad Request"
-ERROR:src.generation:An error occurred during the API call: Error code: 400 - {'error': {'message': 'The supported API model names are deepseek-flash, deepseek-v4-pro, but you passed fake. (request_id: 82810731-4cab-41e9-8327-959e53236565)', 'type': 'invalid_request_error', 'param': None, 'code': 'invalid_request_error'}}
+ERROR:src.generation:An error occurred during the API call: Error code: 400 - {'error': {'message': 'The supported API model names are deepseek-flash, deepseek-v4-pro, but you passed fake. (request_id: 419281bb-2bf5-424b-bd32-c9256fddb64e)', 'type': 'invalid_request_error', 'param': None, 'code': 'invalid_request_error'}}
 API call failed, retrying... (Attempt 1/5)
 INFO:httpx:HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 400 Bad Request"
-ERROR:src.generation:An error occurred during the API call: Error code: 400 - {'error': {'message': 'The supported API model names are deepseek-flash, deepseek-v4-pro, but you passed fake. (request_id: 9cc09a43-f878-4f5b-ae9f-04b2e836a496)', 'type': 'invalid_request_error', 'param': None, 'code': 'invalid_request_error'}}
+ERROR:src.generation:An error occurred during the API call: Error code: 400 - {'error': {'message': 'The supported API model names are deepseek-flash, deepseek-v4-pro, but you passed fake. (request_id: acf18754-87d2-4029-aec0-a9c34e183d0a)', 'type': 'invalid_request_error', 'param': None, 'code': 'invalid_request_error'}}
 API call failed, retrying... (Attempt 2/5)
 INFO:httpx:HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 400 Bad Request"
-ERROR:src.generation:An error occurred during the API call: Error code: 400 - {'error': {'message': 'The supported API model names are deepseek-flash, deepseek-v4-pro, but you passed fake. (request_id: 97a48b39-fbef-41fd-8257-1f21e9619c1d)', 'type': 'invalid_request_error', 'param': None, 'code': 'invalid_request_error'}}
+ERROR:src.generation:An error occurred during the API call: Error code: 400 - {'error': {'message': 'The supported API model names are deepseek-flash, deepseek-v4-pro, but you passed fake. (request_id: 7877366a-85ee-4522-895e-479fbc3254d1)', 'type': 'invalid_request_error', 'param': None, 'code': 'invalid_request_error'}}
 API call failed, retrying... (Attempt 3/5)
 INFO:httpx:HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 400 Bad Request"
-ERROR:src.generation:An error occurred during the API call: Error code: 400 - {'error': {'message': 'The supported API model names are deepseek-flash, deepseek-v4-pro, but you passed fake. (request_id: 50cb7485-e955-4ef3-baf3-0d9f0c1c29d7)', 'type': 'invalid_request_error', 'param': None, 'code': 'invalid_request_error'}}
+ERROR:src.generation:An error occurred during the API call: Error code: 400 - {'error': {'message': 'The supported API model names are deepseek-flash, deepseek-v4-pro, but you passed fake. (request_id: 7c9778da-5d68-474c-a873-abd9a35a90d5)', 'type': 'invalid_request_error', 'param': None, 'code': 'invalid_request_error'}}
 API call failed, retrying... (Attempt 4/5)
 INFO:httpx:HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 400 Bad Request"
-ERROR:src.generation:An error occurred during the API call: Error code: 400 - {'error': {'message': 'The supported API model names are deepseek-flash, deepseek-v4-pro, but you passed fake. (request_id: ad8442b0-3087-4089-a728-e7f9532d2670)', 'type': 'invalid_request_error', 'param': None, 'code': 'invalid_request_error'}}
+ERROR:src.generation:An error occurred during the API call: Error code: 400 - {'error': {'message': 'The supported API model names are deepseek-flash, deepseek-v4-pro, but you passed fake. (request_id: df41aaa3-7dca-4b4f-ad3b-a1c432146b1e)', 'type': 'invalid_request_error', 'param': None, 'code': 'invalid_request_error'}}
 API call failed, retrying... (Attempt 5/5)
 Error: API call still failed after 5 retries (status: 'code3_generate').
 [PASS] tracecoder 刚好够：reconcile 后余额归零

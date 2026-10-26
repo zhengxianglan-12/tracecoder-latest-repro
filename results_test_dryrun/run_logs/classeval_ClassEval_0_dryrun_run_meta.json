@@ -3,10 +3,10 @@
     "dataset": "classeval",
     "task_id": "ClassEval_0",
     "model": "fake-model",
-    "git_commit": "bed878cdedf16bb4218885039ed43cc7700cfe08",
+    "git_commit": "5c3741b57fac341f18696ee67e6f3ef0ea2e26e4",
     "git_dirty": true,
     "repo_dirty": true,
-    "code_dirty": true,
+    "code_dirty": false,
     "code_dependency_files": [
         "problem_processor.py",
         "independent_resample.py",
@@ -30,7 +30,7 @@
     "selection_rule": "highest_visible_pass_count; tie -> earliest_generated",
     "evaluation_scope": "visible_tests_only",
     "overrun_candidate_policy": "kept_but_excluded_from_selection",
-    "num_requests_definition": "ledger_rows = num_requests_sent + num_requests_rejected + num_requests_usage_unverifiable",
+    "num_requests_definition": "ledger_rows = num_requests_sent + num_requests_rejected; num_requests_usage_unverifiable is a subset of num_requests_sent (a sent request whose usage was missing)",
     "file_hashes": {
         "problem_processor.py": "45ae7ea1fc3c",
         "independent_resample.py": "422f7215bc18",
