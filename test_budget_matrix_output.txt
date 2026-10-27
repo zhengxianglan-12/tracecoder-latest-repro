@@ -7,25 +7,9 @@ ERROR:root:[resample] usage unverifiable, stopping.
 [PASS] resample 缺 usage：budget_overrun=None，不被洗成 False
 ERROR:root:[resample] OVERRUN: before=2457, actual=2461, after=-4
 [PASS] resample 可见通过但超限：超限优先，候选被排除
-INFO:httpx:HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 400 Bad Request"
-ERROR:src.generation:An error occurred during the API call: Error code: 400 - {'error': {'message': 'The supported API model names are deepseek-flash, deepseek-v4-pro, but you passed fake. (request_id: 419281bb-2bf5-424b-bd32-c9256fddb64e)', 'type': 'invalid_request_error', 'param': None, 'code': 'invalid_request_error'}}
-API call failed, retrying... (Attempt 1/5)
-INFO:httpx:HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 400 Bad Request"
-ERROR:src.generation:An error occurred during the API call: Error code: 400 - {'error': {'message': 'The supported API model names are deepseek-flash, deepseek-v4-pro, but you passed fake. (request_id: acf18754-87d2-4029-aec0-a9c34e183d0a)', 'type': 'invalid_request_error', 'param': None, 'code': 'invalid_request_error'}}
-API call failed, retrying... (Attempt 2/5)
-INFO:httpx:HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 400 Bad Request"
-ERROR:src.generation:An error occurred during the API call: Error code: 400 - {'error': {'message': 'The supported API model names are deepseek-flash, deepseek-v4-pro, but you passed fake. (request_id: 7877366a-85ee-4522-895e-479fbc3254d1)', 'type': 'invalid_request_error', 'param': None, 'code': 'invalid_request_error'}}
-API call failed, retrying... (Attempt 3/5)
-INFO:httpx:HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 400 Bad Request"
-ERROR:src.generation:An error occurred during the API call: Error code: 400 - {'error': {'message': 'The supported API model names are deepseek-flash, deepseek-v4-pro, but you passed fake. (request_id: 7c9778da-5d68-474c-a873-abd9a35a90d5)', 'type': 'invalid_request_error', 'param': None, 'code': 'invalid_request_error'}}
-API call failed, retrying... (Attempt 4/5)
-INFO:httpx:HTTP Request: POST https://api.deepseek.com/v1/chat/completions "HTTP/1.1 400 Bad Request"
-ERROR:src.generation:An error occurred during the API call: Error code: 400 - {'error': {'message': 'The supported API model names are deepseek-flash, deepseek-v4-pro, but you passed fake. (request_id: df41aaa3-7dca-4b4f-ad3b-a1c432146b1e)', 'type': 'invalid_request_error', 'param': None, 'code': 'invalid_request_error'}}
-API call failed, retrying... (Attempt 5/5)
-Error: API call still failed after 5 retries (status: 'code3_generate').
-[PASS] tracecoder 刚好够：reconcile 后余额归零
-[PASS] tracecoder 不够：budget_stopped=True，未发请求
-[PASS] tracecoder 低估后超限：overrun=True, overrun_tokens=4, remaining=-4
+[PASS] tracecoder 刚好够：走入口，余额归零，未超限
+[PASS] tracecoder 不够：budget_stopped=True，零请求
+[PASS] tracecoder 低估后超限：走入口，overrun=True, overrun_tokens=4
 [PASS] tracecoder 缺 usage：usage_unverifiable=True
 
 ========================= Processing problem: fake_task =========================
@@ -36,5 +20,17 @@ INFO:root:[resample] stop: need ~2457, remaining 2456
 ERROR:root:[resample] OVERRUN: before=2457, actual=2461, after=-4
 ERROR:root:[resample] usage unverifiable, stopping.
 [PASS] resample 逐请求 vs 汇总一致（4 种情况）
+
+========================= Processing problem: fake_task =========================
+Problem fake_task processing completed. Final result: Failed (budget stopped)
+[PASS] process_problem 首次预算拒绝：request_log 有 sent=False 记录
+
+========================= Processing problem: fake_task =========================
+Problem fake_task processing completed. Final result: Failed (usage unverifiable)
+[PASS] process_problem 首次缺 usage：request_log 有 sent=True 且用量 None 记录
+
+========================= Processing problem: fake_task =========================
+Problem fake_task processing completed. Final result: Failed (usage unverifiable)
+[PASS] process_problem 账本等式：行数=已发+拒绝，未知<=已发
 
 [SUCCESS] 两种方法 × 五种情况 + 一致性核对全部通过

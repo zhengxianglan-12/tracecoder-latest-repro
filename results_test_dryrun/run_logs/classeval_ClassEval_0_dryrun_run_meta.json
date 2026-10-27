@@ -3,7 +3,7 @@
     "dataset": "classeval",
     "task_id": "ClassEval_0",
     "model": "fake-model",
-    "git_commit": "5c3741b57fac341f18696ee67e6f3ef0ea2e26e4",
+    "git_commit": "8abfe81b8898ff5a51b8710e04534ea58ac27c7f",
     "git_dirty": true,
     "repo_dirty": true,
     "code_dirty": false,
@@ -32,14 +32,14 @@
     "overrun_candidate_policy": "kept_but_excluded_from_selection",
     "num_requests_definition": "ledger_rows = num_requests_sent + num_requests_rejected; num_requests_usage_unverifiable is a subset of num_requests_sent (a sent request whose usage was missing)",
     "file_hashes": {
-        "problem_processor.py": "45ae7ea1fc3c",
-        "independent_resample.py": "422f7215bc18",
+        "problem_processor.py": "ed212fcb8368",
+        "independent_resample.py": "597e0b439f97",
         "generation.py": "ef7ff219a4da",
         "traceRunner.py": "a4acf82a64d7"
     },
     "file_hashes_lf_normalized": {
-        "problem_processor.py": "9af678ad3289",
-        "independent_resample.py": "91f9d45b5a7b",
+        "problem_processor.py": "f2ff4575cc3c",
+        "independent_resample.py": "9367468eb4cd",
         "generation.py": "fd1e147ecc24",
         "traceRunner.py": "664902b3f37d"
     },
@@ -67,6 +67,26 @@
             "stop_when_visible_passed": false,
             "remaining_budget_after": 13500
         }
+    },
+    "dataset_task_order": [
+        "ClassEval_0",
+        "ClassEval_1",
+        "ClassEval_2",
+        "ClassEval_3",
+        "ClassEval_4"
+    ],
+    "task_selection": {
+        "mode": "task_id",
+        "task_id": "ClassEval_0",
+        "start_index": 0,
+        "resolved_task_id": "ClassEval_0"
+    },
+    "dataset_file_hash": "3a5bb938bf8e",
+    "timeout": 10,
+    "retry_policy": {
+        "generator_internal_retries": true,
+        "retry_cost_recorded_in_request_log": false,
+        "note": "generator 内部对失败请求最多重试 5 次（max_retries=5，间隔 5 秒）；当前 request_log 只记录最终成功一次调用的 usage。失败请求的 usage 因 API 报错未返回而不可知，重试消耗未计入账本。若需严格成本说明，应在 call_api 层捕获失败请求的可用信息（如请求体大小估算），或在 request_log 增加 retry_count / retry_estimated_tokens 字段。"
     },
     "output_files_changed": [
         "results_test_dryrun/run_logs/classeval_ClassEval_0_dryrun_candidates_resample.json",
