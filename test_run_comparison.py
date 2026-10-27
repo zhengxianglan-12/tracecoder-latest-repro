@@ -5,6 +5,7 @@
 import os
 import json
 import shutil
+import csv
 from types import SimpleNamespace
 
 import problem_processor as pp
@@ -21,6 +22,8 @@ from run_comparison import (
 )
 from config import DATASET_PATHS
 from src.dataset_loader import load_dataset
+
+
 def test_resample_budget_rejected():
     """预算不足 → 拒绝事件进 requests，三数分开（sent=0, rejected=1）。"""
     from independent_resample import _run_independent_resample
@@ -48,6 +51,7 @@ def test_resample_budget_rejected():
     assert res["requests"][0]["stopped_reason"] == "Budget insufficient before resample request"
     print("[PASS] resample 预算拒绝：num_requests=1, sent=0, rejected=1")
 
+
 def main():
     test_results_dir = "results_test_dryrun"
     if os.path.isdir(test_results_dir):
@@ -60,12 +64,16 @@ def main():
     problem_data = datasets[task_id]
     safe_task = task_id.replace("/", "_")
 
+    # prefix 提前定义，后面写 CSV 检查、expected 列表都要用
+    prefix = f"classeval_{safe_task}_dryrun"
+
     cli = SimpleNamespace(
         dataset="classeval", task_id=task_id,
         model="fake-model", budget_total=15000, output_reserve=2000,
         max_resamples=10, timeout=10,
         max_debug_attempts=5, max_no_improvement_streak=2,
         stop_when_visible_passed=False, no_instrumentation=True,
+        start_index=0,          # ← 新增：run_meta.task_selection 要读
     )
 
     log_lines = [f"===== dry-run: {task_id} ====="]
@@ -103,13 +111,30 @@ def main():
     summary_rows = write_outputs(
         task_id, safe_task, "dryrun", cli,
         trace_res, resample_res, args_trace, args_resample, log_lines,
+        datasets,
         results_dir=test_results_dir,
     )
     assert len(summary_rows) == 2
     assert summary_rows[0]["method"] == "tracecoder"
     assert summary_rows[1]["method"] == "independent_resample"
 
-    prefix = f"classeval_{safe_task}_dryrun"
+    # 新增：三个异常分类字段必须存在且有值
+    for row in summary_rows:
+        assert "stopped_by_budget_rejection" in row, row
+        assert "stopped_by_usage_unverifiable" in row, row
+        assert row.get("sample_class") in ("normal", "overrun", "unknown", "rejected"), row
+        assert isinstance(row["stopped_by_budget_rejection"], bool), row
+        assert isinstance(row["stopped_by_usage_unverifiable"], bool), row
+
+    # 新增：summary.csv 必须是 25 列（原 22 + 3）
+    summary_csv_path = f"{test_results_dir}/tables/{prefix}_summary.csv"
+    with open(summary_csv_path, "r", encoding="utf-8") as f:
+        reader = csv.reader(f)
+        headers = next(reader)
+    assert len(headers) == 25, f"summary.csv 应为 25 列，实际 {len(headers)} 列：{headers}"
+    for col in ("stopped_by_budget_rejection", "stopped_by_usage_unverifiable", "sample_class"):
+        assert col in headers, f"summary.csv 缺列：{col}"
+
     expected = [
         f"{test_results_dir}/run_logs/{prefix}_run_meta.json",
         f"{test_results_dir}/run_logs/{prefix}_debug_session_log_tracecoder.json",

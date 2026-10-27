@@ -373,9 +373,13 @@ def _run_direct_generation(problem_data, args, check_correctness_func_param: Cal
 
     # 缺 usage：不可核验
     if p_tokens is None or c_tokens is None:
-        return {"code": generated_code, "eval_result": {"passed": False, "passed_count": 0, "total_count": 0},
+        return {"code": generated_code,
+                "eval_result": {"passed": False, "passed_count": 0, "total_count": 0},
                 "prompt_tokens": None, "completion_tokens": None,
-                "usage_unverifiable": True}
+                "usage_unverifiable": True,
+                "estimated_input": need - output_reserve if remaining is not None else None,
+                "remaining_before": remaining,
+                "remaining_after": remaining}
 
     budget_overrun = False
     overrun_tokens = 0
@@ -475,6 +479,21 @@ def _run_self_debugging(initial_code, initial_eval, problem_data, args, check_co
             if p is None or c is None:
                 logging.error("[budget] instrumentation usage unverifiable, stopping.")
                 usage_unverifiable_flag = True
+                request_log.append({
+                    "stage": "instrumentation",
+                    "attempt": attempt,
+                    "sent": True,
+                    "estimated_input": need - output_reserve,
+                    "output_reserve": output_reserve,
+                    "prompt_tokens": None,
+                    "completion_tokens": None,
+                    "remaining_before": remaining,
+                    "remaining_after": remaining,
+                    "overrun_tokens": None,
+                    "budget_overrun": None,
+                    "usage_unverifiable": True,
+                    "stopped_reason": "Usage missing for instrumentation request",
+                })
                 log.append({
                     "attempt": attempt,
                     "input_code": input_code_at_attempt_start,
@@ -592,6 +611,21 @@ def _run_self_debugging(initial_code, initial_eval, problem_data, args, check_co
         if p is None or c is None:
             logging.error("[budget] analysis usage unverifiable, stopping.")
             usage_unverifiable_flag = True
+            request_log.append({
+                "stage": "analysis_planning",
+                "attempt": attempt,
+                "sent": True,
+                "estimated_input": need - output_reserve,
+                "output_reserve": output_reserve,
+                "prompt_tokens": None,
+                "completion_tokens": None,
+                "remaining_before": remaining,
+                "remaining_after": remaining,
+                "overrun_tokens": None,
+                "budget_overrun": None,
+                "usage_unverifiable": True,
+                "stopped_reason": "Usage missing for analysis request",
+            })
             log.append({
                 "attempt": attempt,
                 "status": "usage_unverifiable",
@@ -729,6 +763,21 @@ def _run_self_debugging(initial_code, initial_eval, problem_data, args, check_co
         if p_impl is None or c_impl is None:
             logging.error("[budget] implementation usage unverifiable, stopping.")
             usage_unverifiable_flag = True
+            request_log.append({
+                "stage": "implementation",
+                "attempt": attempt,
+                "sent": True,
+                "estimated_input": need - output_reserve,
+                "output_reserve": output_reserve,
+                "prompt_tokens": None,
+                "completion_tokens": None,
+                "remaining_before": remaining,
+                "remaining_after": remaining,
+                "overrun_tokens": None,
+                "budget_overrun": None,
+                "usage_unverifiable": True,
+                "stopped_reason": "Usage missing for implementation request",
+            })
             log.append({
                 "attempt": attempt,
                 "status": "usage_unverifiable",
@@ -910,8 +959,15 @@ def _run_self_debugging(initial_code, initial_eval, problem_data, args, check_co
         "budget_exhausted": budget_exhausted,
         "budget_remaining": getattr(args, "remaining_budget", None),
         "usage_unverifiable": usage_unverifiable_flag,
-        "budget_overrun": any(r.get("budget_overrun") for r in request_log),
-        "overrun_tokens": sum(r.get("overrun_tokens", 0) for r in request_log),
+        "budget_overrun": (
+            True if any(r.get("budget_overrun") is True for r in request_log)
+            else (None if any(r.get("budget_overrun") is None for r in request_log)
+                  else False)
+        ),
+        "overrun_tokens": (
+            None if any(r.get("overrun_tokens") is None for r in request_log)
+            else sum(r.get("overrun_tokens") or 0 for r in request_log)
+        ),
         "final_best_attempt": best_attempt,
         "final_best_source": (
             "initial_generation" if best_attempt == 0 else f"attempt_{best_attempt}"
@@ -929,7 +985,43 @@ def process_problem(problem_data, task_id, args, check_correctness_func_param: C
 
     gen_res = _run_direct_generation(problem_data, args, check_correctness_func_param)
     initial_request_log = []
-    if gen_res.get("prompt_tokens") is not None:
+
+    if gen_res.get("budget_stopped"):
+        # 首次预算拒绝：没发请求，记一条 sent=False 的拒绝事件
+        initial_request_log.append({
+            "stage": "skipped_budget_direct_generation",
+            "attempt": 0,
+            "sent": False,
+            "estimated_input": (gen_res.get("budget_need") or 0) - get_step_output_reserve(args, "direct_generation"),
+            "output_reserve": get_step_output_reserve(args, "direct_generation"),
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "remaining_before": gen_res.get("budget_remaining"),
+            "remaining_after": gen_res.get("budget_remaining"),
+            "overrun_tokens": 0,
+            "budget_overrun": False,
+            "usage_unverifiable": False,
+            "stopped_reason": "Budget insufficient for initial generation",
+        })
+    elif gen_res.get("usage_unverifiable"):
+        # 首次缺 usage：发了请求但用量未知，记一条 sent=True 且用量为 None 的记录
+        initial_request_log.append({
+            "stage": "direct_generation",
+            "attempt": 0,
+            "sent": True,
+            "estimated_input": gen_res.get("estimated_input"),
+            "output_reserve": get_step_output_reserve(args, "direct_generation"),
+            "prompt_tokens": None,
+            "completion_tokens": None,
+            "remaining_before": getattr(args, "remaining_budget", None),
+            "remaining_after": getattr(args, "remaining_budget", None),
+            "overrun_tokens": None,          # 未知，不是 0
+            "budget_overrun": None,          # 未知，不是 False
+            "usage_unverifiable": True,
+            "stopped_reason": "Initial generation usage unverifiable",
+        })
+    else:
+        # 正常发出：有 usage
         initial_request_log.append({
             "stage": "direct_generation",
             "attempt": 0,
@@ -939,7 +1031,7 @@ def process_problem(problem_data, task_id, args, check_correctness_func_param: C
             "prompt_tokens": gen_res["prompt_tokens"],
             "completion_tokens": gen_res["completion_tokens"],
             "remaining_before": gen_res.get("remaining_before"),
-            "remaining_after": getattr(args, "remaining_budget", None),
+            "remaining_after": gen_res.get("remaining_after"),
             "overrun_tokens": gen_res.get("overrun_tokens", 0),
             "budget_overrun": gen_res.get("budget_overrun", False),
             "usage_unverifiable": False,
@@ -959,6 +1051,7 @@ def process_problem(problem_data, task_id, args, check_correctness_func_param: C
             "stopped_reason": "Budget insufficient for initial generation",
             "budget_need": gen_res.get("budget_need"),
             "budget_remaining": gen_res.get("budget_remaining"),
+            "request_log": initial_request_log,
             "total_prompt_tokens": 0, "total_completion_tokens": 0,
             "processing_time_seconds": time.time() - start_time,
         }
@@ -976,6 +1069,7 @@ def process_problem(problem_data, task_id, args, check_correctness_func_param: C
             "final_code": gen_res["code"], "final_eval": gen_res["eval_result"], "final_passed": False,
             "stopped_reason": "Initial generation usage unverifiable",
             "total_prompt_tokens": None, "total_completion_tokens": None,
+            "request_log": initial_request_log,
             "processing_time_seconds": time.time() - start_time,
         }
         print(f"Problem {task_id} processing completed. Final result: Failed (usage unverifiable)")

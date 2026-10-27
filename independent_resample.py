@@ -234,8 +234,19 @@ def _run_independent_resample(problem_data, args, check_correctness_func,
         "budget_exhausted": budget_exhausted,
         "budget_remaining": getattr(args, "remaining_budget", None),
         # --- 超限汇总：与 TraceCoder 同口径 ---
-        "budget_overrun": any(r.get("budget_overrun") is True for r in requests),
-        "overrun_tokens": sum(r.get("overrun_tokens") or 0 for r in requests),
+        # 三态汇总：任一条 True -> True；否则任一条 None -> None；全 False -> False
+        "budget_overrun": (
+            True if any(r.get("budget_overrun") is True for r in requests)
+            else (None if any(r.get("budget_overrun") is None for r in requests)
+                  else False)
+        ),
+        # 已知超限量：只累加有值的；若存在未知，另用 coverage_complete 表达
+        "overrun_tokens": (
+            None if any(r.get("overrun_tokens") is None for r in requests)
+            else sum(r.get("overrun_tokens") or 0 for r in requests)
+        ),
+        # 覆盖完整性：有缺 usage 的记录则为 False
+        "coverage_complete": not any(r.get("usage_unverifiable") for r in requests),
         # --- 三类计数分开，不靠导出默认值 ---
         "num_requests_sent": sum(1 for r in requests if r.get("sent") is True),
         "num_requests_rejected": sum(1 for r in requests if r.get("sent") is False),

@@ -81,7 +81,9 @@ def test_resample_exactly_enough():
     res = _run_resample_case(2457, _gen_fixed(457, 2000), _eval_factory(False, 0),
                              max_resamples=1)          # ← 关键：只跑 1 轮
     assert res["requests"][0]["remaining_after"] == 0, res
-    assert res["budget_overrun"] is False, res
+    assert res["budget_overrun"] is False, res         # 有完整 usage，确认没超
+    assert res["overrun_tokens"] == 0, res             # 超了 0 个
+    assert res["coverage_complete"] is True, res       # 覆盖完整
     assert res["num_requests_sent"] == 1
     assert res["num_requests_rejected"] == 0
     assert res["stopped_reason"] == "Max resamples reached"
@@ -119,7 +121,9 @@ def test_resample_usage_missing():
     assert res["requests"][0]["usage_unverifiable"] is True
     assert res["requests"][0]["budget_overrun"] is None, res["requests"][0]
     assert res["requests"][0]["overrun_tokens"] is None, res["requests"][0]
-    assert res["budget_overrun"] is False, res  # any(... is True) 不把 None 当超限
+    assert res["budget_overrun"] is None, res
+    assert res["overrun_tokens"] is None, res
+    assert res["coverage_complete"] is False, res
     assert res["stopped_reason"] == "Usage missing for resample request"
     print("[PASS] resample 缺 usage：budget_overrun=None，不被洗成 False")
 
@@ -161,39 +165,65 @@ def _trace_args(remaining, max_debug_attempts=1, no_instrumentation=True):
 
 
 def test_trace_direct_exactly_enough():
-    """TraceCoder 初始生成刚好够：余额归零，未超限。"""
+    """TraceCoder 初始生成刚好够：走真实入口，余额归零，未超限。"""
+    import problem_processor as pp
     prompt = _make_problem()["complete_prompt"]
     need, ok = budget_check_and_reserve(2457, prompt, 2000, step="direct_generation")
     assert ok and need == 2457, need
 
-    args = _trace_args(2457)
-    gen_res = _run_direct_generation(_make_problem(), args, _eval_factory(False, 0))
-    # _run_direct_generation 内部用的是模块级 generator，这里改用它自己的返回判断
-    # 为了不依赖真实 generator，直接调内部核账函数验证
-    from problem_processor import reconcile_budget_after_request
-    remaining_after, overrun_tokens, flag = reconcile_budget_after_request(2457, 457, 2000)
-    assert remaining_after == 0 and overrun_tokens == 0 and flag is False
-    print("[PASS] tracecoder 刚好够：reconcile 后余额归零")
+    # 替身实际用量 = 457 + 2000 = 2457，恰好等于预算
+    original = pp.generator
+    pp.generator = _gen_fixed(457, 2000)
+    try:
+        args = _trace_args(2457)
+        gen_res = _run_direct_generation(_make_problem(), args, _eval_factory(False, 0))
+    finally:
+        pp.generator = original
+
+    # 断言真实入口返回值，不再断言独立核账函数
+    assert gen_res.get("budget_stopped") is not True, gen_res
+    assert gen_res.get("usage_unverifiable") is not True, gen_res
+    assert gen_res.get("remaining_after") == 0, gen_res
+    assert gen_res.get("overrun_tokens") == 0, gen_res
+    assert gen_res.get("budget_overrun") is False, gen_res
+    assert args.remaining_budget == 0, args.remaining_budget
+    print("[PASS] tracecoder 刚好够：走入口，余额归零，未超限")
 
 
 def test_trace_direct_not_enough():
-    """TraceCoder 初始生成预算不够：budget_stopped=True，不发请求。"""
-    args = _trace_args(2456)
-    res = _run_direct_generation(_make_problem(), args, _eval_factory(False, 0))
+    """TraceCoder 初始生成预算不够：budget_stopped=True，零请求。"""
+    import problem_processor as pp
+    original = pp.generator
+    pp.generator = _gen_must_not_call()   # 一被调用就炸
+    try:
+        args = _trace_args(2456)
+        res = _run_direct_generation(_make_problem(), args, _eval_factory(False, 0))
+    finally:
+        pp.generator = original
+
     assert res.get("budget_stopped") is True, res
     assert res.get("budget_need") == 2457, res
     assert res.get("budget_remaining") == 2456, res
-    print("[PASS] tracecoder 不够：budget_stopped=True，未发请求")
+    assert args.remaining_budget == 2456, args.remaining_budget  # 没扣账
+    print("[PASS] tracecoder 不够：budget_stopped=True，零请求")
 
 
 def test_trace_direct_underestimate_overrun():
-    """TraceCoder 初始生成低估后超限：overrun=True, overrun_tokens=4。"""
-    from problem_processor import reconcile_budget_after_request
-    remaining_after, overrun_tokens, flag = reconcile_budget_after_request(2457, 461, 2000)
-    assert remaining_after == -4
-    assert overrun_tokens == 4
-    assert flag is True
-    print("[PASS] tracecoder 低估后超限：overrun=True, overrun_tokens=4, remaining=-4")
+    """TraceCoder 初始生成低估后超限：走真实入口，overrun=True。"""
+    import problem_processor as pp
+    original = pp.generator
+    pp.generator = _gen_fixed(461, 2000)   # 实际 461+2000=2461 > 2457
+    try:
+        args = _trace_args(2457)
+        gen_res = _run_direct_generation(_make_problem(), args, _eval_factory(False, 0))
+    finally:
+        pp.generator = original
+
+    assert gen_res.get("budget_overrun") is True, gen_res
+    assert gen_res.get("overrun_tokens") == 4, gen_res
+    assert gen_res.get("remaining_after") == -4, gen_res
+    assert args.remaining_budget == -4, args.remaining_budget
+    print("[PASS] tracecoder 低估后超限：走入口，overrun=True, overrun_tokens=4")
 
 
 def test_trace_usage_missing():
@@ -254,10 +284,15 @@ def _check_consistency(res, label):
     # 缺 usage 必须是"真实发出"的子集
     assert unver <= sent, label
 
-    overrun_rows = [r for r in reqs if r.get("budget_overrun") is True]
-    assert res["budget_overrun"] == (len(overrun_rows) > 0), label
-    total_overrun = sum((r.get("overrun_tokens") or 0) for r in reqs)
-    assert res["overrun_tokens"] == total_overrun, label
+    
+    has_true = any(r.get("budget_overrun") is True for r in reqs)
+    has_none = any(r.get("budget_overrun") is None for r in reqs)
+    expected = True if has_true else (None if has_none else False)
+    assert res["budget_overrun"] == expected, label
+    if any(r.get("overrun_tokens") is None for r in reqs):
+        assert res["overrun_tokens"] is None, label
+    else:
+        assert res["overrun_tokens"] == sum((r.get("overrun_tokens") or 0) for r in reqs), label
 
 
 def test_summary_consistency_resample():
@@ -272,7 +307,70 @@ def test_summary_consistency_resample():
         res = _run_resample_case(remaining, gen, ev)
         _check_consistency(res, f"resample/{label}")
     print("[PASS] resample 逐请求 vs 汇总一致（4 种情况）")
+def test_process_problem_initial_budget_rejected_has_request_log():
+    """首次预算拒绝：提前 return 也要带 request_log，且 sent=False。"""
+    import problem_processor as pp
+    original = pp.generator
+    pp.generator = _gen_must_not_call()
+    try:
+        args = _trace_args(1)
+        args.max_problems = 1
+        args.start_index = 0
+        result = pp.process_problem(_make_problem(), "fake_task", args, _eval_factory(False, 0))
+    finally:
+        pp.generator = original
 
+    reqs = result["request_log"]
+    assert len(reqs) == 1, reqs
+    assert reqs[0]["sent"] is False, reqs[0]
+    assert reqs[0]["stage"] == "skipped_budget_direct_generation", reqs[0]
+    assert result["stopped_reason"] == "Budget insufficient for initial generation", result
+    print("[PASS] process_problem 首次预算拒绝：request_log 有 sent=False 记录")
+
+
+def test_process_problem_initial_usage_missing_has_request_log():
+    """首次缺 usage：提前 return 也要带 request_log，且 sent=True、用量 None。"""
+    import problem_processor as pp
+    original = pp.generator
+    pp.generator = _gen_none_usage()
+    try:
+        args = _trace_args(15000)
+        args.max_problems = 1
+        args.start_index = 0
+        result = pp.process_problem(_make_problem(), "fake_task", args, _eval_factory(False, 0))
+    finally:
+        pp.generator = original
+
+    reqs = result["request_log"]
+    assert len(reqs) == 1, reqs
+    assert reqs[0]["sent"] is True, reqs[0]
+    assert reqs[0]["usage_unverifiable"] is True, reqs[0]
+    assert reqs[0]["budget_overrun"] is None, reqs[0]
+    assert reqs[0]["overrun_tokens"] is None, reqs[0]
+    assert result["stopped_reason"] == "Initial generation usage unverifiable", result
+    print("[PASS] process_problem 首次缺 usage：request_log 有 sent=True 且用量 None 记录")
+
+
+def test_process_problem_ledger_equation():
+    """账本行数 = 已发 + 拒绝；未知是已发子集。"""
+    import problem_processor as pp
+    original = pp.generator
+    pp.generator = _gen_none_usage()
+    try:
+        args = _trace_args(15000)
+        args.max_problems = 1
+        args.start_index = 0
+        result = pp.process_problem(_make_problem(), "fake_task", args, _eval_factory(False, 0))
+    finally:
+        pp.generator = original
+
+    reqs = result["request_log"]
+    sent = sum(1 for r in reqs if r.get("sent") is True)
+    rejected = sum(1 for r in reqs if r.get("sent") is False)
+    unver = sum(1 for r in reqs if r.get("usage_unverifiable"))
+    assert len(reqs) == sent + rejected, (len(reqs), sent, rejected)
+    assert unver <= sent, (unver, sent)
+    print("[PASS] process_problem 账本等式：行数=已发+拒绝，未知<=已发")
 
 def main():
     import logging, sys
@@ -311,10 +409,16 @@ def main():
         test_trace_usage_missing,
         test_trace_visible_passed_but_overrun,
         test_summary_consistency_resample,
+        test_process_problem_initial_budget_rejected_has_request_log,
+        test_process_problem_initial_usage_missing_has_request_log,
+        test_process_problem_ledger_equation,
     ]
     for t in tests:
         t()
     print("\n[SUCCESS] 两种方法 × 五种情况 + 一致性核对全部通过")
+    # 恢复 stdout/stderr，避免解释器退出时 _Tee 清理触发 unraisablehook
+    sys.stdout = sys.__stdout__
+    sys.stderr = sys.__stderr__
     _log_file.close()
 
 

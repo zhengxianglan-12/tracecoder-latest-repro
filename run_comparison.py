@@ -222,10 +222,26 @@ def run_resample(problem_data, args, check_correctness_func, log_lines,
 #   <prefix>_requests.csv
 #   <prefix>_summary.csv
 # ============================================================
+def _classify_sample(row):
+    """
+    单题归类，优先级：overrun > unknown > rejected > normal。
+    - overrun: 已证实超限（budget_overrun is True），最确定，优先；
+    - unknown: 有缺 usage 请求（coverage_complete is False），数据不全；
+    - rejected: 整题因预算拒绝终止（stopped_by_budget_rejection）；
+    - normal: 以上都不满足。
+    注意：一题可能同时 overrun + unknown，按优先级归 overrun，但 coverage_complete 仍为 False，明细不丢。
+    """
+    if row.get("budget_overrun") is True:
+        return "overrun"
+    if row.get("coverage_complete") is False:
+        return "unknown"
+    if row.get("stopped_by_budget_rejection"):
+        return "rejected"
+    return "normal"
 def write_outputs(task_id, safe_task, run_time, cli,
                   trace_res, resample_res,
                   args_trace, args_resample,
-                  log_lines, results_dir="results"):
+                  log_lines, datasets, results_dir="results"):
     prefix = f"{cli.dataset}_{safe_task}_{run_time}"
 
     # ---------- 1. run_meta ----------
@@ -298,6 +314,26 @@ def write_outputs(task_id, safe_task, run_time, cli,
                 "stop_when_visible_passed": cli.stop_when_visible_passed,
                 "remaining_budget_after": args_resample.remaining_budget,
             },
+        },
+        "dataset_task_order": list(datasets.keys())[:5],
+        "task_selection": {
+            "mode": "task_id" if cli.task_id else "start_index",
+            "task_id": cli.task_id,
+            "start_index": cli.start_index,
+            "resolved_task_id": task_id,
+        },
+        "dataset_file_hash": _file_hash(DATASET_PATHS[cli.dataset]["data_path"]),
+        "timeout": cli.timeout,
+        "retry_policy": {
+            "generator_internal_retries": True,
+            "retry_cost_recorded_in_request_log": False,
+            "note": (
+    "generator 内部对失败请求最多重试 5 次（max_retries=5，间隔 5 秒）；"
+    "当前 request_log 只记录最终成功一次调用的 usage。"
+    "失败请求的 usage 因 API 报错未返回而不可知，重试消耗未计入账本。"
+    "若需严格成本说明，应在 call_api 层捕获失败请求的可用信息（如请求体大小估算），"
+    "或在 request_log 增加 retry_count / retry_estimated_tokens 字段。"
+                ),
         },
         # 输出文件变动清单：运行结束后回填
         "output_files_changed": [],
@@ -405,11 +441,24 @@ def write_outputs(task_id, safe_task, run_time, cli,
             "evaluation_scope": EVALUATION_SCOPE,
             "num_requests_sent": sum(1 for r in (trace_res.get("request_log") or []) if r.get("sent") is True),
             "num_requests_rejected": sum(1 for r in (trace_res.get("request_log") or []) if r.get("sent") is False),
-            "num_requests_usage_unverifiable": None,  # TraceCoder 缺 usage 走 log 不走 request_log，该路径不统计
+            "num_requests_usage_unverifiable": sum(
+                1 for r in (trace_res.get("request_log") or []) if r.get("usage_unverifiable")
+            ),
             "num_debug_attempts": len(trace_res.get("debug_session_log") or []),
             "num_candidates": len(trace_res.get("debug_session_log") or []),
             "budget_overrun": trace_res.get("budget_overrun"),
             "overrun_tokens": trace_res.get("overrun_tokens"),
+            "coverage_complete": not any(
+                r.get("usage_unverifiable") for r in (trace_res.get("request_log") or [])
+            ),
+            "stopped_by_budget_rejection": (
+                isinstance(trace_res.get("stopped_reason"), str)
+                and "Budget insufficient" in trace_res["stopped_reason"]
+            ),
+            "stopped_by_usage_unverifiable": (
+                isinstance(trace_res.get("stopped_reason"), str)
+                and "Usage missing" in trace_res["stopped_reason"]
+            ),
             "git_commit": _git_commit(),
             "budget_total": cli.budget_total,
             "original_files_prefix": prefix,
@@ -432,26 +481,44 @@ def write_outputs(task_id, safe_task, run_time, cli,
             ),
             "num_debug_attempts": None,
             "num_candidates": len(resample_res.get("candidates") or []),
-            "budget_overrun": resample_res.get("budget_overrun"),   # 不默认 False
-            "overrun_tokens": resample_res.get("overrun_tokens"),   # 不默认 0
+            "budget_overrun": resample_res.get("budget_overrun"),
+            "overrun_tokens": resample_res.get("overrun_tokens"),
+            "coverage_complete": resample_res.get("coverage_complete"),
+            "stopped_by_budget_rejection": (
+                isinstance(resample_res.get("stopped_reason"), str)
+                and "Budget insufficient" in resample_res["stopped_reason"]
+            ),
+            "stopped_by_usage_unverifiable": (
+                isinstance(resample_res.get("stopped_reason"), str)
+                and "Usage missing" in resample_res["stopped_reason"]
+            ),
             "git_commit": _git_commit(),
             "budget_total": cli.budget_total,
             "original_files_prefix": prefix,
             "selection_rule": resample_res.get("selection_rule"),
         },
     ]
-    summary_headers = ["task_id", "method", "git_commit", "budget_total",
-                       "num_requests", "num_requests_sent",
-                       "num_requests_rejected", "num_requests_usage_unverifiable",
-                       "num_debug_attempts", "num_candidates",
-                       "prompt_tokens", "completion_tokens", "stopped_reason",
-                       "budget_overrun", "overrun_tokens",
-                       "final_visible_passed_count", "final_code_hash",
-                       "budget_remaining_after", "evaluation_scope", "selection_rule",
-                       "original_files_prefix"]
-    _write_csv(f"{results_dir}/tables/{prefix}_summary.csv",
-               summary_rows, summary_headers)
-
+    summary_headers = [
+        "task_id", "method", "git_commit", "budget_total",
+        "num_requests", "num_requests_sent",
+        "num_requests_rejected", "num_requests_usage_unverifiable",
+        "num_debug_attempts", "num_candidates",
+        "prompt_tokens", "completion_tokens", "stopped_reason",
+        "budget_overrun", "overrun_tokens", "coverage_complete",
+        "stopped_by_budget_rejection", "stopped_by_usage_unverifiable",
+        "sample_class",
+        "final_visible_passed_count", "final_code_hash",
+        "budget_remaining_after", "evaluation_scope", "selection_rule",
+        "original_files_prefix",
+    ]
+    for row in summary_rows:
+        row["sample_class"] = _classify_sample(row)
+    _write_csv(
+        f"{results_dir}/tables/{prefix}_summary.csv",
+        summary_rows,
+        summary_headers,
+    )
+               
     return summary_rows
 
 
@@ -524,7 +591,7 @@ def main():
 
     summary_rows = write_outputs(task_id, safe_task, run_time, cli,
                                  trace_res, resample_res,
-                                 args_trace, args_resample, log_lines)
+                                 args_trace, args_resample, log_lines, datasets)
 
     # 运行后对比快照，回填 output_files_changed
     prefix = f"{cli.dataset}_{safe_task}_{run_time}"
