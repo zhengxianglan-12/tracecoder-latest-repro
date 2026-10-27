@@ -227,6 +227,22 @@ def run_branch(label, initial_score, plan_text, impl_code, score_map,
 # 六类分支
 # ============================================================
 if __name__ == '__main__':
+    import sys
+
+    class _Tee:
+        def __init__(self, *streams):
+            self.streams = streams
+        def write(self, data):
+            for s in self.streams:
+                s.write(data)
+        def flush(self):
+            for s in self.streams:
+                s.flush()
+
+    _log_file = open("test_state_machine_real_entry_output.txt", "w", encoding="utf-8")
+    sys.stdout = _Tee(sys.__stdout__, _log_file)
+    sys.stderr = _Tee(sys.__stderr__, _log_file)
+
     print("========== 真实入口状态机自测（替身 generator/评测，不调用模型） ==========")
 
         # 1a. 改善后继续：12 -> 13，max_attempts=2，第 1 轮 improve 后应继续
@@ -333,3 +349,8 @@ if __name__ == '__main__':
     check_process_problem_stopped_reason()
 
     print("\n[SUCCESS] 六类分支（改善、持平、退步、成功、无计划、空代码）全部验证通过！")
+
+    # 恢复 stdout/stderr，避免解释器退出时 _Tee 清理触发 unraisablehook
+    sys.stdout = sys.__stdout__
+    sys.stderr = sys.__stderr__
+    _log_file.close()
