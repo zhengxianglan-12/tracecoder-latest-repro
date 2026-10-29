@@ -371,12 +371,14 @@ def _run_direct_generation(problem_data, args, check_correctness_func_param: Cal
         prompt, "code3_generate", args.model, max_tokens_response=output_reserve
     )
 
-    # 缺 usage：不可核验
+    # 缺 usage：不可核验；区分“响应缺失”与“用量未知”
     if p_tokens is None or c_tokens is None:
+        failure_kind = "response_missing" if generated_code is None else "usage_missing"
         return {"code": generated_code,
                 "eval_result": {"passed": False, "passed_count": 0, "total_count": 0},
                 "prompt_tokens": None, "completion_tokens": None,
                 "usage_unverifiable": True,
+                "failure_kind": failure_kind,
                 "estimated_input": need - output_reserve if remaining is not None else None,
                 "remaining_before": remaining,
                 "remaining_after": remaining}
@@ -477,7 +479,13 @@ def _run_self_debugging(initial_code, initial_eval, problem_data, args, check_co
                 max_tokens_response=output_reserve
             )
             if p is None or c is None:
-                logging.error("[budget] instrumentation usage unverifiable, stopping.")
+                failure_kind = "response_missing" if instrumented_code_gen is None else "usage_missing"
+                stop_reason = (
+                    "Response missing for instrumentation request"
+                    if failure_kind == "response_missing"
+                    else "Usage missing for instrumentation request"
+                )
+                logging.error(f"[budget] instrumentation {failure_kind}, stopping.")
                 usage_unverifiable_flag = True
                 request_log.append({
                     "stage": "instrumentation",
@@ -492,13 +500,15 @@ def _run_self_debugging(initial_code, initial_eval, problem_data, args, check_co
                     "overrun_tokens": None,
                     "budget_overrun": None,
                     "usage_unverifiable": True,
-                    "stopped_reason": "Usage missing for instrumentation request",
+                    "failure_kind": failure_kind,
+                    "stopped_reason": stop_reason,
                 })
                 log.append({
                     "attempt": attempt,
                     "input_code": input_code_at_attempt_start,
                     "input_code_hash": get_hash(input_code_at_attempt_start),
                     "status": "usage_unverifiable",
+                    "failure_kind": failure_kind,
                     "plan": None,
                     "eval_result": {"passed": False, "passed_count": 0, "total_count": 0},
                     "candidate_code_hash": "empty",
@@ -506,7 +516,7 @@ def _run_self_debugging(initial_code, initial_eval, problem_data, args, check_co
                     "next_input_actual": None,
                     "best_code_hash": get_hash(best_code),
                     "candidate_code": "", "next_input_code": code_to_debug, "best_code": best_code,
-                    "stopped_reason": "Usage missing for instrumentation request",
+                    "stopped_reason": stop_reason,
                     "cost": {"prompt_tokens": 0, "completion_tokens": 0},
                     "cost_cumulative": {"prompt_tokens": p_tokens, "completion_tokens": c_tokens},
                 })
@@ -609,7 +619,13 @@ def _run_self_debugging(initial_code, initial_eval, problem_data, args, check_co
             max_tokens_response=output_reserve
         )
         if p is None or c is None:
-            logging.error("[budget] analysis usage unverifiable, stopping.")
+            failure_kind = "response_missing" if llm_response is None else "usage_missing"
+            stop_reason = (
+                "Response missing for analysis request"
+                if failure_kind == "response_missing"
+                else "Usage missing for analysis request"
+            )
+            logging.error(f"[budget] analysis {failure_kind}, stopping.")
             usage_unverifiable_flag = True
             request_log.append({
                 "stage": "analysis_planning",
@@ -624,11 +640,13 @@ def _run_self_debugging(initial_code, initial_eval, problem_data, args, check_co
                 "overrun_tokens": None,
                 "budget_overrun": None,
                 "usage_unverifiable": True,
-                "stopped_reason": "Usage missing for analysis request",
+                "failure_kind": failure_kind,
+                "stopped_reason": stop_reason,
             })
             log.append({
                 "attempt": attempt,
                 "status": "usage_unverifiable",
+                "failure_kind": failure_kind,
                 "input_code": input_code_at_attempt_start,
                 "input_code_hash": get_hash(input_code_at_attempt_start),
                 "plan": None,
@@ -638,7 +656,7 @@ def _run_self_debugging(initial_code, initial_eval, problem_data, args, check_co
                 "next_input_actual": None,
                 "best_code_hash": get_hash(best_code),
                 "candidate_code": "", "next_input_code": code_to_debug, "best_code": best_code,
-                "stopped_reason": "Usage missing for analysis request",
+                "stopped_reason": stop_reason,
                 "cost": {"prompt_tokens": 0, "completion_tokens": 0},
                 "cost_cumulative": {"prompt_tokens": p_tokens, "completion_tokens": c_tokens},
             })
@@ -761,7 +779,13 @@ def _run_self_debugging(initial_code, initial_eval, problem_data, args, check_co
             max_tokens_response=output_reserve
         )
         if p_impl is None or c_impl is None:
-            logging.error("[budget] implementation usage unverifiable, stopping.")
+            failure_kind = "response_missing" if llm_response_impl is None else "usage_missing"
+            stop_reason = (
+                "Response missing for implementation request"
+                if failure_kind == "response_missing"
+                else "Usage missing for implementation request"
+            )
+            logging.error(f"[budget] implementation {failure_kind}, stopping.")
             usage_unverifiable_flag = True
             request_log.append({
                 "stage": "implementation",
@@ -776,11 +800,13 @@ def _run_self_debugging(initial_code, initial_eval, problem_data, args, check_co
                 "overrun_tokens": None,
                 "budget_overrun": None,
                 "usage_unverifiable": True,
-                "stopped_reason": "Usage missing for implementation request",
+                "failure_kind": failure_kind,
+                "stopped_reason": stop_reason,
             })
             log.append({
                 "attempt": attempt,
                 "status": "usage_unverifiable",
+                "failure_kind": failure_kind,
                 "plan": None,
                 "input_code": input_code_at_attempt_start,
                 "input_code_hash": get_hash(input_code_at_attempt_start),
@@ -790,7 +816,7 @@ def _run_self_debugging(initial_code, initial_eval, problem_data, args, check_co
                 "next_input_actual": None,
                 "best_code_hash": get_hash(best_code),
                 "candidate_code": "", "next_input_code": code_to_debug, "best_code": best_code,
-                "stopped_reason": "Usage missing for implementation request",
+                "stopped_reason": stop_reason,
                 "cost": {"prompt_tokens": 0, "completion_tokens": 0},
                 "cost_cumulative": {"prompt_tokens": p_tokens, "completion_tokens": c_tokens},
             })
@@ -1004,7 +1030,8 @@ def process_problem(problem_data, task_id, args, check_correctness_func_param: C
             "stopped_reason": "Budget insufficient for initial generation",
         })
     elif gen_res.get("usage_unverifiable"):
-        # 首次缺 usage：发了请求但用量未知，记一条 sent=True 且用量为 None 的记录
+        # 首次缺 usage：发了请求但用量未知；区分“响应缺失”与“用量未知”
+        failure_kind = gen_res.get("failure_kind", "usage_missing")
         initial_request_log.append({
             "stage": "direct_generation",
             "attempt": 0,
@@ -1018,7 +1045,12 @@ def process_problem(problem_data, task_id, args, check_correctness_func_param: C
             "overrun_tokens": None,          # 未知，不是 0
             "budget_overrun": None,          # 未知，不是 False
             "usage_unverifiable": True,
-            "stopped_reason": "Initial generation usage unverifiable",
+            "failure_kind": failure_kind,
+            "stopped_reason": (
+                "Initial generation response missing"
+                if failure_kind == "response_missing"
+                else "Initial generation usage unverifiable"
+            ),
         })
     else:
         # 正常发出：有 usage
@@ -1060,6 +1092,7 @@ def process_problem(problem_data, task_id, args, check_correctness_func_param: C
 
     # 分支：初始生成缺 usage，不可核验
     if gen_res.get("usage_unverifiable"):
+        failure_kind = gen_res.get("failure_kind", "usage_missing")
         result = {
             "task_id": task_id, "model": args.model, "dataset": args.dataset,
             "method_instrumentation": not args.no_instrumentation,
@@ -1067,7 +1100,12 @@ def process_problem(problem_data, task_id, args, check_correctness_func_param: C
             "direct_gen_code": gen_res["code"], "direct_gen_eval": gen_res["eval_result"],
             "direct_gen_passed": False,
             "final_code": gen_res["code"], "final_eval": gen_res["eval_result"], "final_passed": False,
-            "stopped_reason": "Initial generation usage unverifiable",
+            "stopped_reason": (
+                "Initial generation response missing"
+                if failure_kind == "response_missing"
+                else "Initial generation usage unverifiable"
+            ),
+            "failure_kind": failure_kind,
             "total_prompt_tokens": None, "total_completion_tokens": None,
             "request_log": initial_request_log,
             "processing_time_seconds": time.time() - start_time,

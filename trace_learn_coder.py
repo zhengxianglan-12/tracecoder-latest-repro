@@ -196,6 +196,18 @@ def main():
                 "请求后按实际 usage 核账，余额为负时标记 budget_overrun 并停止。"
             ),
         },
+        "retry_policy": {
+            "sdk_max_retries": 0,
+            "generator_internal_retries": 0,
+            "retry_cost_recorded_in_request_log": False,
+            "note": (
+                "10-29 首轮策略：关闭 SDK 层（OpenAI max_retries=0）与 generator 层"
+                "（原 max_retries=5 的 while 循环已移除）两层隐式重试；"
+                "一次逻辑调用对应一次底层请求。"
+                "失败请求如实记为 sent=True 且用量未知（None），不写 0；"
+                "预算无法核验时按预先规则停止并保留异常题。"
+            ),
+        },
 
         # 输出文件变动清单（运行结束后回填）
         "output_files_changed": [],

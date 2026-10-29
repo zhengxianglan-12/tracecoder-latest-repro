@@ -3,7 +3,7 @@ INFO:root:[resample] stop: need ~2457, remaining 2456
 [PASS] resample 不够：不发请求，rejected=1
 ERROR:root:[resample] OVERRUN: before=2457, actual=2461, after=-4
 [PASS] resample 低估后超限：overrun=True, overrun_tokens=4, remaining=-4
-ERROR:root:[resample] usage unverifiable, stopping.
+ERROR:root:[resample] usage_missing, stopping.
 [PASS] resample 缺 usage：budget_overrun=None，不被洗成 False
 ERROR:root:[resample] OVERRUN: before=2457, actual=2461, after=-4
 [PASS] resample 可见通过但超限：超限优先，候选被排除
@@ -18,7 +18,7 @@ Problem fake_task processing completed. Final result: Failed (budget overrun)
 INFO:root:[resample] stop: need ~2457, remaining 0
 INFO:root:[resample] stop: need ~2457, remaining 2456
 ERROR:root:[resample] OVERRUN: before=2457, actual=2461, after=-4
-ERROR:root:[resample] usage unverifiable, stopping.
+ERROR:root:[resample] usage_missing, stopping.
 [PASS] resample 逐请求 vs 汇总一致（4 种情况）
 
 ========================= Processing problem: fake_task =========================
@@ -32,5 +32,47 @@ Problem fake_task processing completed. Final result: Failed (usage unverifiable
 ========================= Processing problem: fake_task =========================
 Problem fake_task processing completed. Final result: Failed (usage unverifiable)
 [PASS] process_problem 账本等式：行数=已发+拒绝，未知<=已发
+ERROR:root:[resample] response_missing, stopping.
+[PASS] resample 响应缺失：failure_kind=response_missing
+ERROR:root:[resample] usage_missing, stopping.
+[PASS] resample 未知用量：failure_kind=usage_missing
+ERROR:root:[resample] usage_missing, stopping.
+[PASS] resample 部分用量未知：2 条账本，第 2 条 usage_missing
 
-[SUCCESS] 两种方法 × 五种情况 + 一致性核对全部通过
+========================= Processing problem: fake_task =========================
+Problem fake_task processing completed. Final result: Failed (usage unverifiable)
+[PASS] tracecoder 响应缺失：failure_kind=response_missing
+
+========================= Processing problem: fake_task =========================
+Problem fake_task processing completed. Final result: Failed (usage unverifiable)
+[PASS] tracecoder 未知用量：failure_kind=usage_missing
+
+========================= Processing problem: fake_task =========================
+Direct generation failed, entering self-debugging phase.
+INFO:root:--- Debug attempt: 1/1 | Best: 0/10 ---
+ERROR:root:[budget] instrumentation response_missing, stopping.
+Problem fake_task processing completed. Final result: Failed
+[PASS] tracecoder 初始成功+调试失败：2 条账本，第 2 条 response_missing
+
+========================= Processing problem: fake_task =========================
+Problem fake_task processing completed. Final result: Failed (usage unverifiable)
+ERROR:root:[resample] response_missing, stopping.
+
+========================= Processing problem: fake_task =========================
+Problem fake_task processing completed. Final result: Failed (usage unverifiable)
+ERROR:root:[resample] usage_missing, stopping.
+[PASS] 两方法口径一致：response_missing / usage_missing 两边都记对
+ERROR:root:[resample] response_missing, stopping.
+[PASS] resample 两次失败后成功：设计一失败就停，账本 1 条 response_missing（如实记录）
+ERROR:root:[resample] response_missing, stopping.
+[PASS] resample 全部失败：设计一失败就停，账本 1 条 response_missing（如实记录）
+
+========================= Processing problem: fake_task =========================
+Problem fake_task processing completed. Final result: Failed (usage unverifiable)
+[PASS] tracecoder 两次失败后成功：初始失败即停，账本 1 条 response_missing（如实记录）
+
+========================= Processing problem: fake_task =========================
+Problem fake_task processing completed. Final result: Failed (usage unverifiable)
+[PASS] tracecoder 全部失败：初始失败即停，账本 1 条 response_missing（如实记录）
+
+[SUCCESS] 两种方法 × 五种情况 + failure_kind 两态 + 两方法口径一致 全部通过

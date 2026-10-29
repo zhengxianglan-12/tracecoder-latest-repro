@@ -14,7 +14,8 @@ from .postprocessing import extract_python_code
 # --- OpenAI/Compatible API Client Configuration ---
 client = OpenAI(
     api_key=os.environ.get("DEEPSEEK_API_KEY"),
-    base_url="https://api.deepseek.com/v1"
+    base_url="https://api.deepseek.com/v1",
+    max_retries=0, 
 )
 
 # Configure logger
@@ -171,45 +172,39 @@ def generator(text: str, status: str, model_name: str, models=None, tokenizers=N
 
     # If using an API model
     else:
-        max_retries = 5
-        retry_count = 0
+        # 10-29 首轮策略：关闭生成器层面隐式重试。
+        # 一次逻辑调用 = 一次 call_api = 一次底层请求（SDK 侧 max_retries=0）。
+        raw_generation, p_tokens, c_tokens = call_api(
+            prompt=text, model=model_name,
+            max_tokens_response=max_tokens_response,
+        )
 
-        while retry_count < max_retries:
-            raw_generation, p_tokens, c_tokens = call_api(
-                prompt=text, model=model_name,
-                max_tokens_response=max_tokens_response,
+        # 缺 usage：不可核验，直接返回 None 用量，不按 0 继续
+        if raw_generation is not None and (p_tokens is None or c_tokens is None):
+            logger.error(
+                f"Usage missing for status '{status}'; "
+                f"marking as unverifiable."
             )
+            return raw_generation, None, None
 
-            # 缺 usage：不可核验，停止重试并返回 None，不能按 0 继续
-            if raw_generation is not None and (p_tokens is None or c_tokens is None):
-                logger.error(
-                    f"Usage missing for status '{status}'; "
-                    f"marking as unverifiable and stopping retries."
-                )
-                return raw_generation, None, None
+        if raw_generation is not None:
+            # Post-process the raw output based on the status
+            if status in ["code3_generate", "code5_generate"]:
+                processed_generation = extract_python_code(raw_generation)
+                print(f"################# PROCESSED ({status}) #################\n{processed_generation}")
+                return processed_generation, p_tokens, c_tokens
 
-            if raw_generation is not None:
-                # Post-process the raw output based on the status
-                if status in ["code3_generate", "code5_generate"]:
-                    processed_generation = extract_python_code(raw_generation)
-                    print(f"################# PROCESSED ({status}) #################\n{processed_generation}")
-                    return processed_generation, p_tokens, c_tokens
+            elif status in ["code4_generate", "code6_generate"]:
+                # These statuses need to return the original text containing analysis and code
+                print(f"################# RAW ({status}) #################\n{raw_generation}")
+                return raw_generation, p_tokens, c_tokens
 
-                elif status in ["code4_generate", "code6_generate"]:
-                    # These statuses need to return the original text containing analysis and code
-                    print(f"################# RAW ({status}) #################\n{raw_generation}")
-                    return raw_generation, p_tokens, c_tokens
+            else:
+                # Default behavior: return the raw text
+                return raw_generation, p_tokens, c_tokens
 
-                else:
-                    # Default behavior: return the raw text
-                    return raw_generation, p_tokens, c_tokens
-
-            retry_count += 1
-            print(f"API call failed, retrying... (Attempt {retry_count}/{max_retries})")
-            if retry_count < max_retries:
-                time.sleep(5)
-
-        # All retries failed
-        error_message = f"Error: API call still failed after {max_retries} retries (status: '{status}')."
-        print(error_message)
-        return error_message, None, None
+        # 调用失败：不重试，直接返回 None（不返回错误字符串，避免上层误当代码用）
+        logger.error(
+            f"API call failed for status '{status}'; no retry (first-round policy)."
+        )
+        return None, None, None

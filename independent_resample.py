@@ -94,8 +94,14 @@ def _run_independent_resample(problem_data, args, check_correctness_func,
             max_tokens_response=output_reserve,
         )
 
-        # 3) 缺 usage：不可核验，停止
+        # 3) 缺 usage：不可核验，停止；区分“响应缺失”与“用量未知”
         if p_tokens is None or c_tokens is None:
+            failure_kind = "response_missing" if code is None else "usage_missing"
+            stop_reason = (
+                "Response missing for resample request"
+                if failure_kind == "response_missing"
+                else "Usage missing for resample request"
+            )
             requests.append({
                 "request_id": f"R{request_id:02d}",
                 "stage": "resample",
@@ -109,10 +115,11 @@ def _run_independent_resample(problem_data, args, check_correctness_func,
                 "overrun_tokens": None,              # 未知，不是 0
                 "budget_overrun": None,              # 未知，不是 False
                 "usage_unverifiable": True,
-                "stopped_reason": "Usage missing for resample request",
+                "failure_kind": failure_kind,
+                "stopped_reason": stop_reason,
             })
-            stopped_reason = "Usage missing for resample request"
-            logging.error("[resample] usage unverifiable, stopping.")
+            stopped_reason = stop_reason
+            logging.error(f"[resample] {failure_kind}, stopping.")
             break
 
         # 4) 事后核账（同一账本，与 TraceCoder 同口径）

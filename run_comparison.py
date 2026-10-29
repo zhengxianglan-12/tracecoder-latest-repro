@@ -325,15 +325,17 @@ def write_outputs(task_id, safe_task, run_time, cli,
         "dataset_file_hash": _file_hash(DATASET_PATHS[cli.dataset]["data_path"]),
         "timeout": cli.timeout,
         "retry_policy": {
-            "generator_internal_retries": True,
+            "sdk_max_retries": 0,
+            "generator_internal_retries": 0,
             "retry_cost_recorded_in_request_log": False,
             "note": (
-    "generator 内部对失败请求最多重试 5 次（max_retries=5，间隔 5 秒）；"
-    "当前 request_log 只记录最终成功一次调用的 usage。"
-    "失败请求的 usage 因 API 报错未返回而不可知，重试消耗未计入账本。"
-    "若需严格成本说明，应在 call_api 层捕获失败请求的可用信息（如请求体大小估算），"
-    "或在 request_log 增加 retry_count / retry_estimated_tokens 字段。"
-                ),
+                "10-29 首轮策略：关闭 SDK 层（OpenAI max_retries=0）与 generator 层"
+                "（原 max_retries=5 的 while 循环已移除）两层隐式重试；"
+                "一次逻辑调用对应一次底层请求。"
+                "失败请求如实记为 sent=True 且用量未知（None），不写 0；"
+                "预算无法核验时按预先规则停止并保留异常题。"
+                "retry_cost_recorded_in_request_log 保留 False，因首轮已无重试消耗可记。"
+            ),
         },
         # 输出文件变动清单：运行结束后回填
         "output_files_changed": [],
@@ -395,6 +397,7 @@ def write_outputs(task_id, safe_task, run_time, cli,
             "remaining_after": r.get("remaining_after"),
             "overrun_tokens": r.get("overrun_tokens"),
             "budget_overrun": r.get("budget_overrun"),
+            "failure_kind": r.get("failure_kind"),
             "stopped_reason": r.get("stopped_reason"),
             "visible_passed_count": None,
         })
@@ -414,6 +417,7 @@ def write_outputs(task_id, safe_task, run_time, cli,
             "remaining_after": r.get("remaining_after"),
             "overrun_tokens": r.get("overrun_tokens"),      # None，不是 0
             "budget_overrun": r.get("budget_overrun"),      # None，不是 False
+            "failure_kind": r.get("failure_kind"),          # None / "response_missing" / "usage_missing"
             "stopped_reason": r.get("stopped_reason"),
             "visible_passed_count": None,
         })
@@ -422,7 +426,7 @@ def write_outputs(task_id, safe_task, run_time, cli,
                    "estimated_input", "output_reserve",
                    "prompt_tokens", "completion_tokens",
                    "remaining_before", "remaining_after",
-                   "overrun_tokens", "budget_overrun",
+                   "overrun_tokens", "budget_overrun", "failure_kind",
                    "stopped_reason", "visible_passed_count"]
     _write_csv(f"{results_dir}/tables/{prefix}_requests.csv",
                all_requests, req_headers)
@@ -444,6 +448,14 @@ def write_outputs(task_id, safe_task, run_time, cli,
             "num_requests_usage_unverifiable": sum(
                 1 for r in (trace_res.get("request_log") or []) if r.get("usage_unverifiable")
             ),
+            "num_requests_response_missing": sum(
+                1 for r in (trace_res.get("request_log") or [])
+                if r.get("failure_kind") == "response_missing"
+            ),
+            "num_requests_usage_missing": sum(
+                1 for r in (trace_res.get("request_log") or [])
+                if r.get("failure_kind") == "usage_missing"
+            ),
             "num_debug_attempts": len(trace_res.get("debug_session_log") or []),
             "num_candidates": len(trace_res.get("debug_session_log") or []),
             "budget_overrun": trace_res.get("budget_overrun"),
@@ -457,7 +469,8 @@ def write_outputs(task_id, safe_task, run_time, cli,
             ),
             "stopped_by_usage_unverifiable": (
                 isinstance(trace_res.get("stopped_reason"), str)
-                and "Usage missing" in trace_res["stopped_reason"]
+                and ("Usage missing" in trace_res["stopped_reason"]
+                     or "Response missing" in trace_res["stopped_reason"])
             ),
             "git_commit": _git_commit(),
             "budget_total": cli.budget_total,
@@ -479,6 +492,14 @@ def write_outputs(task_id, safe_task, run_time, cli,
             "num_requests_usage_unverifiable": resample_res.get(
                 "num_requests_usage_unverifiable"
             ),
+            "num_requests_response_missing": sum(
+                1 for r in (resample_res.get("requests") or [])
+                if r.get("failure_kind") == "response_missing"
+            ),
+            "num_requests_usage_missing": sum(
+                1 for r in (resample_res.get("requests") or [])
+                if r.get("failure_kind") == "usage_missing"
+            ),
             "num_debug_attempts": None,
             "num_candidates": len(resample_res.get("candidates") or []),
             "budget_overrun": resample_res.get("budget_overrun"),
@@ -490,7 +511,8 @@ def write_outputs(task_id, safe_task, run_time, cli,
             ),
             "stopped_by_usage_unverifiable": (
                 isinstance(resample_res.get("stopped_reason"), str)
-                and "Usage missing" in resample_res["stopped_reason"]
+                and ("Usage missing" in resample_res["stopped_reason"]
+                     or "Response missing" in resample_res["stopped_reason"])
             ),
             "git_commit": _git_commit(),
             "budget_total": cli.budget_total,
@@ -502,6 +524,7 @@ def write_outputs(task_id, safe_task, run_time, cli,
         "task_id", "method", "git_commit", "budget_total",
         "num_requests", "num_requests_sent",
         "num_requests_rejected", "num_requests_usage_unverifiable",
+        "num_requests_response_missing", "num_requests_usage_missing",
         "num_debug_attempts", "num_candidates",
         "prompt_tokens", "completion_tokens", "stopped_reason",
         "budget_overrun", "overrun_tokens", "coverage_complete",
